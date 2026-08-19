@@ -7,10 +7,12 @@ use App\Models\WebPage;
 use App\Models\Domain;
 use App\Models\CrawlJob;
 use App\Models\SearchQuery;
+use App\Models\Sitemap;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class SearchController extends Controller
 {
@@ -59,6 +61,76 @@ class SearchController extends Controller
             'currentCategory' => $category,
             'currentPage' => $page,
         ]);
+    }
+
+    /**
+     * Submit New Website page: GET /submit
+     */
+    public function submitSite(): Response
+    {
+        $recentSubmissions = CrawlJob::where('metadata->source', 'public_website_submission')
+            ->orderByDesc('created_at')
+            ->limit(6)
+            ->get(['id', 'seed_url', 'status', 'pages_crawled', 'pages_indexed', 'created_at']);
+
+        return Inertia::render('SubmitSite', [
+            'recentSubmissions' => $recentSubmissions,
+            'totalIndexed' => WebPage::where('is_indexed', true)->count(),
+            'totalDomains' => Domain::count(),
+        ]);
+    }
+
+    /**
+     * Process Website submission form: POST /submit
+     */
+    public function processSubmitSite(Request $request)
+    {
+        $validated = $request->validate([
+            'url' => 'required|url|max:2048',
+            'category' => 'nullable|string|in:all,tech,code,news,science,general',
+            'max_pages' => 'nullable|integer|min:1|max:500',
+            'is_sitemap' => 'nullable|boolean',
+        ]);
+
+        $url = trim($validated['url']);
+        $parsed = parse_url($url);
+        $domainName = strtolower($parsed['host'] ?? $url);
+        $scheme = $parsed['scheme'] ?? 'https';
+
+        $domain = Domain::firstOrCreate(
+            ['name' => $domainName],
+            [
+                'protocol' => $scheme,
+                'verification_token' => 'web-search-site-verification=' . Str::random(32),
+                'is_verified' => false,
+                'crawl_status' => 'idle',
+            ]
+        );
+
+        $isSitemap = (bool) ($validated['is_sitemap'] ?? str_ends_with(strtolower($url), '.xml'));
+
+        if ($isSitemap) {
+            Sitemap::firstOrCreate(
+                ['domain_id' => $domain->id, 'url' => $url],
+                ['status' => 'submitted', 'total_urls' => 0, 'indexed_urls' => 0]
+            );
+        }
+
+        $job = CrawlJob::create([
+            'id' => (string) Str::uuid(),
+            'seed_url' => $url,
+            'status' => 'queued',
+            'max_depth' => 2,
+            'max_pages' => (int) ($validated['max_pages'] ?? 50),
+            'concurrency' => 3,
+            'metadata' => [
+                'category' => $validated['category'] ?? 'all',
+                'source' => 'public_website_submission',
+                'is_sitemap' => $isSitemap,
+            ],
+        ]);
+
+        return back()->with('success', "Website '{$domainName}' has been queued for indexing! Job ID: {$job->id}");
     }
 
     /**

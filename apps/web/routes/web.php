@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', [SearchController::class, 'home'])->name('home');
 Route::get('/search', [SearchController::class, 'search'])->name('search');
 Route::get('/suggest', [SearchController::class, 'suggest'])->name('suggest');
+Route::get('/submit', [SearchController::class, 'submitSite'])->name('submit');
+Route::post('/submit', [SearchController::class, 'processSubmitSite'])->name('submit.process');
 Route::get('/stats', [SearchController::class, 'stats'])->name('stats');
 Route::get('/docs', [SearchController::class, 'docs'])->name('docs');
 

@@ -9,6 +9,22 @@ import type {
   PerformanceMetrics,
 } from '@web-search/shared-types';
 
+export interface SubmitSiteRequest {
+  url: string;
+  category?: 'all' | 'tech' | 'code' | 'news' | 'science' | 'general';
+  max_pages?: number;
+  is_sitemap?: boolean;
+}
+
+export interface SubmitSiteResponse {
+  success: boolean;
+  message: string;
+  jobId: string;
+  domain: string;
+  url: string;
+  status: string;
+}
+
 export interface WebSearchClientOptions {
   baseUrl?: string;
   apiKey?: string;
@@ -94,6 +110,16 @@ export class WebSearchClient {
   public async suggest(query: string): Promise<SuggestionResponse> {
     const searchParams = new URLSearchParams({ q: query });
     return this.request<SuggestionResponse>(`/api/v1/suggest?${searchParams.toString()}`);
+  }
+
+  /**
+   * Submit a new website or sitemap to be indexed
+   */
+  public async submitWebsite(request: SubmitSiteRequest): Promise<SubmitSiteResponse> {
+    return this.request<SubmitSiteResponse>('/api/v1/submit', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
   }
 
   /**

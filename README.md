@@ -1,6 +1,7 @@
 # 🌐 Web-Search.org
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL_3.0-blue.svg)](LICENSE)
+[![GitHub Org](https://img.shields.io/badge/GitHub-web--search--org-181717.svg?logo=github&logoColor=white)](https://github.com/web-search-org)
 [![Laravel](https://img.shields.io/badge/Laravel-12.x-FF2D20.svg?logo=laravel&logoColor=white)](https://laravel.com)
 [![Svelte](https://img.shields.io/badge/Svelte-5.x-FF3E00.svg?logo=svelte&logoColor=white)](https://svelte.dev)
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB.svg?logo=python&logoColor=white)](https://python.org)
@@ -8,12 +9,20 @@
 
 > **Web-Search.org** is an open-source, privacy-first, community-driven search engine monorepo powered by **Laravel 12**, **Svelte 5**, and a high-throughput **Python AsyncIO** distributed crawler.
 
+- 🌐 GitHub Organization: [https://github.com/web-search-org](https://github.com/web-search-org)
+- 🚀 Search Engine: [http://localhost:8000](http://localhost:8000)
+- 📥 Submit New Websites: [http://localhost:8000/submit](http://localhost:8000/submit)
+- 🧭 Search Console: [http://localhost:8000/console](http://localhost:8000/console)
+- 📊 Open Stats & Telemetry: [http://localhost:8000/stats](http://localhost:8000/stats)
+
 ---
 
 ## 🌟 Key Features
 
 - 🔒 **Zero Tracking & Privacy-First**: No cookie profiling, no user tracking, no query monetization.
 - ⚡ **Ultra-Fast Search UI**: Built with **Svelte 5** and **Inertia.js**, delivering instant search responses, category filters, and keyboard navigation (`/`).
+- 📥 **Submit New Websites UI**: Public submission interface to queue new websites, blogs, documentation sites, and sitemaps for instant indexing.
+- 🧭 **Web-Search Console**: Open-source Google Search Console alternative (URL Inspection, SERP CTR/Position Performance, XML Sitemap submission, and DNS/Meta domain ownership verification).
 - 🤖 **Distributed Async Crawler**: Python 3.11+ crawler with automated `robots.txt` compliance, polite rate limiting, HTML metadata extraction, and content deduplication.
 - 🧠 **Multi-Signal Ranking**: Combines Okapi **BM25**, link-graph **PageRank**, and domain authority metrics.
 - 🧮 **Instant Answers**: Instant calculation engine (e.g. `25 * 4`, math expressions, network diagnostics, UTC clock).
@@ -27,9 +36,9 @@
 ```
 web-search.org/
 ├── apps/
-│   ├── web/                    # Main Search UI & REST API (Laravel 12 + Svelte 5 + Inertia)
-│   │   ├── app/                # Controllers, Models, SearchService, CrawlerService
-│   │   ├── resources/js/       # Svelte 5 Pages: Home, Search, Crawler Dashboard, Stats, Docs
+│   ├── web/                    # Main Search UI, Search Console & REST API (Laravel 12 + Svelte 5 + Inertia)
+│   │   ├── app/                # Controllers, Models, Services (Search, Console, Crawler)
+│   │   ├── resources/js/       # Svelte 5 Pages: Home, Search, SubmitSite, Console, Crawler, Stats, Docs
 │   │   └── routes/             # Web & API routes
 │   ├── crawler/                # Asynchronous Distributed Web Crawler (Python 3.11+)
 │   │   ├── src/crawler/        # Engine, Frontier, Fetcher, Extractor, Dedup, Pipeline
@@ -37,7 +46,7 @@ web-search.org/
 │   └── indexer/                # Ranking & NLP Pipeline (BM25, PageRank, Tokenizer)
 │       └── src/indexer/        # Okapi BM25 & Power-Iteration PageRank algorithms
 ├── packages/
-│   ├── shared-types/           # Shared TypeScript contracts, search & crawl schemas
+│   ├── shared-types/           # Shared TypeScript contracts, search & crawl schemas (UUIDs)
 │   ├── sdk-ts/                 # Official TypeScript / JavaScript Client SDK
 │   └── sdk-php/                # Official PHP Client SDK
 ├── infra/
@@ -71,8 +80,8 @@ pnpm install
 # 2. Install Laravel backend dependencies
 cd apps/web && composer install
 
-# 3. Initialize SQLite database and seed initial index
-php artisan migrate --seed
+# 3. Initialize SQLite database
+php artisan migrate
 
 # 4. Build frontend assets
 pnpm build
@@ -98,8 +107,10 @@ docker compose up -d
 ```
 
 - Search Engine UI: [http://localhost:8000](http://localhost:8000)
+- Submit Websites: [http://localhost:8000/submit](http://localhost:8000/submit)
+- Search Console: [http://localhost:8000/console](http://localhost:8000/console)
 - Crawler Dashboard: [http://localhost:8000/crawler](http://localhost:8000/crawler)
-- Meilisearch Engine: [http://localhost:7700](http://localhost:7700)
+- Open Stats: [http://localhost:8000/stats](http://localhost:8000/stats)
 
 ---
 
@@ -120,43 +131,23 @@ python -m crawler run --seed "https://news.ycombinator.com" --depth 2 --max-page
 ```http
 GET /api/v1/search?q=laravel+svelte&category=tech&page=1
 ```
-**Response:**
-```json
-{
-  "query": "laravel svelte",
-  "totalHits": 4,
-  "page": 1,
-  "totalPages": 1,
-  "executionTimeMs": 1.25,
-  "results": [
-    {
-      "id": 1,
-      "url": "https://svelte.dev",
-      "domain": "svelte.dev",
-      "title": "Svelte • Cybernetically enhanced web apps",
-      "snippet": "Svelte is a radical new approach to building user interfaces...",
-      "favicon": "https://www.google.com/s2/favicons?domain=svelte.dev&sz=64",
-      "rankScore": 9.6
-    }
-  ]
-}
-```
 
-### Autocomplete Suggest Endpoint
+### Submit Website / Crawl Request Endpoint
 ```http
-GET /api/v1/suggest?q=lar
-```
-
-### Queue Crawl Job
-```http
-POST /api/v1/crawl
+POST /api/v1/submit
 Content-Type: application/json
 
 {
-  "url": "https://example.com",
-  "maxDepth": 3,
-  "maxPages": 200
+  "url": "https://svelte.dev",
+  "category": "tech",
+  "max_pages": 50,
+  "is_sitemap": false
 }
+```
+
+### Search Console URL Inspection Endpoint
+```http
+GET /api/v1/console/inspect?url=https://svelte.dev
 ```
 
 ---
@@ -195,7 +186,8 @@ pnpm test
 cd apps/web && php artisan test
 
 # Test Python crawler & ranker
-cd apps/crawler && pytest
+cd apps/crawler && python -m unittest discover tests
+cd apps/indexer && python -m unittest discover tests
 ```
 
 ---
@@ -203,3 +195,4 @@ cd apps/crawler && pytest
 ## 📄 License
 
 This project is licensed under the [AGPL-3.0 License](LICENSE).
+Official repository: [https://github.com/web-search-org](https://github.com/web-search-org)

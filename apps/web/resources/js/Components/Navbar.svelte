@@ -2,7 +2,7 @@
     import { Link } from '@inertiajs/svelte';
     import ThemeToggle from './ThemeToggle.svelte';
     import SearchBar from './SearchBar.svelte';
-    import { Globe, Database, BarChart3, BookOpen, Github, SlidersHorizontal, SearchCheck } from 'lucide-svelte';
+    import { Globe, Database, BarChart3, BookOpen, Github, SearchCheck, PlusCircle } from 'lucide-svelte';
 
     let { showSearch = false, initialQuery = '' } = $props();
 </script>
@@ -33,11 +33,19 @@
         <!-- Navigation Links -->
         <div class="flex items-center gap-1 sm:gap-2">
             <Link
+                href="/submit"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-600/20 transition-all"
+            >
+                <PlusCircle class="w-3.5 h-3.5" />
+                <span>Submit Site</span>
+            </Link>
+
+            <Link
                 href="/console"
-                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
             >
                 <SearchCheck class="w-3.5 h-3.5" />
-                <span>Search Console</span>
+                <span class="hidden sm:inline">Search Console</span>
             </Link>
 
             <Link
@@ -69,11 +77,11 @@
             <ThemeToggle />
 
             <a
-                href="https://github.com/web-search/search"
+                href="https://github.com/web-search-org"
                 target="_blank"
                 rel="noreferrer"
                 class="p-2 rounded-xl text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
-                aria-label="GitHub Repository"
+                aria-label="GitHub Organization"
             >
                 <Github class="w-4.5 h-4.5" />
             </a>

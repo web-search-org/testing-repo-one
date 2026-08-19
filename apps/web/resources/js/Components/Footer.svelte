@@ -1,5 +1,5 @@
 <script>
-    import { ShieldCheck, Heart, Terminal, Sparkles } from 'lucide-svelte';
+    import { ShieldCheck, Terminal, PlusCircle } from 'lucide-svelte';
 </script>
 
 <footer class="mt-auto border-t border-slate-200/80 dark:border-slate-800/80 bg-white/50 dark:bg-slate-950/50 py-8 transition-colors">
@@ -16,10 +16,12 @@
         </div>
 
         <div class="flex items-center gap-6">
+            <a href="/submit" class="hover:text-indigo-600 dark:hover:text-indigo-400 font-semibold text-indigo-600 dark:text-indigo-400 transition-colors">Submit Website</a>
+            <a href="/console" class="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">Search Console</a>
             <a href="/docs" class="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">Developers & API</a>
             <a href="/stats" class="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">Index Transparency</a>
             <a href="/crawler" class="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">Crawl Bot</a>
-            <a href="https://github.com/web-search/search" target="_blank" rel="noreferrer" class="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">Source Code</a>
+            <a href="https://github.com/web-search-org" target="_blank" rel="noreferrer" class="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">GitHub Org</a>
         </div>
 
         <div class="text-center md:text-right">

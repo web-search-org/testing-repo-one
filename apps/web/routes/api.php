@@ -10,6 +10,7 @@ Route::prefix('v1')->group(function () {
     // Search API
     Route::get('/search', [SearchApiController::class, 'search'])->name('api.v1.search');
     Route::get('/suggest', [SearchApiController::class, 'suggest'])->name('api.v1.suggest');
+    Route::post('/submit', [SearchApiController::class, 'submitSite'])->name('api.v1.submit');
 
     // Crawler API
     Route::post('/crawl', [CrawlApiController::class, 'submit'])->name('api.v1.crawl.submit');

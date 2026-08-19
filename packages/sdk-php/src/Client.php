@@ -54,6 +54,14 @@ class Client
     }
 
     /**
+     * Submit a website or sitemap for indexing
+     */
+    public function submitWebsite(array $data): array
+    {
+        return $this->request('POST', '/api/v1/submit', ['json' => $data]);
+    }
+
+    /**
      * Submit a URL to be crawled
      */
     public function submitCrawl(array $jobData): array

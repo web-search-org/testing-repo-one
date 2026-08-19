@@ -24,6 +24,54 @@ class SearchEngineTest extends TestCase
         $response->assertStatus(200);
     }
 
+    public function test_submit_website_page_returns_successful_response(): void
+    {
+        $response = $this->get('/submit');
+        $response->assertStatus(200);
+    }
+
+    public function test_submit_website_form_post_creates_crawl_job_and_domain(): void
+    {
+        $response = $this->post('/submit', [
+            'url' => 'https://docs.astro.build',
+            'category' => 'tech',
+            'max_pages' => 50,
+            'is_sitemap' => false,
+        ]);
+
+        $response->assertStatus(302);
+
+        $this->assertDatabaseHas('domains', [
+            'name' => 'docs.astro.build',
+        ]);
+
+        $this->assertDatabaseHas('crawl_jobs', [
+            'seed_url' => 'https://docs.astro.build',
+            'status' => 'queued',
+        ]);
+    }
+
+    public function test_submit_website_api_endpoint(): void
+    {
+        $response = $this->postJson('/api/v1/submit', [
+            'url' => 'https://vitest.dev/guide/sitemap.xml',
+            'category' => 'code',
+            'max_pages' => 100,
+            'is_sitemap' => true,
+        ]);
+
+        $response->assertStatus(201)
+            ->assertJson([
+                'success' => true,
+                'status' => 'queued',
+                'domain' => 'vitest.dev',
+            ]);
+
+        $this->assertDatabaseHas('domains', ['name' => 'vitest.dev']);
+        $this->assertDatabaseHas('sitemaps', ['url' => 'https://vitest.dev/guide/sitemap.xml']);
+        $this->assertDatabaseHas('crawl_jobs', ['seed_url' => 'https://vitest.dev/guide/sitemap.xml']);
+    }
+
     public function test_models_use_valid_uuids(): void
     {
         $domain = Domain::create([
