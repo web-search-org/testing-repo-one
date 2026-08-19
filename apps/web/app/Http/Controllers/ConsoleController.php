@@ -29,15 +29,25 @@ class ConsoleController extends Controller
         }
 
         if (!$currentDomain) {
-            $currentDomain = $domains->first() ?? Domain::firstOrCreate(
-                ['name' => 'web-search.org'],
-                ['protocol' => 'https', 'is_verified' => true, 'domain_rank' => 10.0]
-            );
+            $currentDomain = $domains->first();
         }
 
-        $performance = $this->consoleService->getPerformanceMetrics($currentDomain);
-        $coverage = $this->consoleService->getCoverageReport($currentDomain);
-        $sitemaps = Sitemap::where('domain_id', $currentDomain->id)->get();
+        $performance = $currentDomain ? $this->consoleService->getPerformanceMetrics($currentDomain) : [
+            'domain' => '',
+            'summary' => ['totalClicks' => 0, 'totalImpressions' => 0, 'averageCtr' => 0, 'averagePosition' => 0],
+            'queries' => [],
+            'pages' => [],
+        ];
+
+        $coverage = $currentDomain ? $this->consoleService->getCoverageReport($currentDomain) : [
+            'validIndexed' => 0,
+            'excluded' => 0,
+            'errors' => 0,
+            'warnings' => 0,
+            'breakdown' => [],
+        ];
+
+        $sitemaps = $currentDomain ? Sitemap::where('domain_id', $currentDomain->id)->get() : [];
 
         return Inertia::render('Console/Dashboard', [
             'domains' => $domains,
@@ -53,8 +63,8 @@ class ConsoleController extends Controller
      */
     public function inspect(Request $request): Response
     {
-        $url = $request->input('url', 'https://web-search.org');
-        $inspectionData = $this->consoleService->inspectUrl($url);
+        $url = $request->input('url', '');
+        $inspectionData = !empty($url) ? $this->consoleService->inspectUrl($url) : null;
         $domains = Domain::all();
 
         return Inertia::render('Console/Inspect', [
@@ -80,10 +90,16 @@ class ConsoleController extends Controller
      */
     public function performance(Request $request): Response
     {
-        $domainName = $request->input('domain', 'web-search.org');
-        $domain = Domain::where('name', $domainName)->first() ?? Domain::first();
-        $performanceData = $this->consoleService->getPerformanceMetrics($domain);
         $domains = Domain::all();
+        $domainName = $request->input('domain');
+        $domain = $domainName ? Domain::where('name', $domainName)->first() : $domains->first();
+
+        $performanceData = $domain ? $this->consoleService->getPerformanceMetrics($domain) : [
+            'domain' => '',
+            'summary' => ['totalClicks' => 0, 'totalImpressions' => 0, 'averageCtr' => 0, 'averagePosition' => 0],
+            'queries' => [],
+            'pages' => [],
+        ];
 
         return Inertia::render('Console/Performance', [
             'currentDomain' => $domain,
@@ -97,10 +113,10 @@ class ConsoleController extends Controller
      */
     public function sitemaps(Request $request): Response
     {
-        $domainName = $request->input('domain', 'web-search.org');
-        $domain = Domain::where('name', $domainName)->first() ?? Domain::first();
-        $sitemaps = Sitemap::where('domain_id', $domain->id)->orderByDesc('created_at')->get();
         $domains = Domain::all();
+        $domainName = $request->input('domain');
+        $domain = $domainName ? Domain::where('name', $domainName)->first() : $domains->first();
+        $sitemaps = $domain ? Sitemap::where('domain_id', $domain->id)->orderByDesc('created_at')->get() : [];
 
         return Inertia::render('Console/Sitemaps', [
             'currentDomain' => $domain,
@@ -122,7 +138,7 @@ class ConsoleController extends Controller
         $domain = Domain::findOrFail($validated['domain_id']);
         $this->consoleService->submitSitemap($domain, $validated['sitemap_url']);
 
-        return back()->with('success', 'Sitemap submitted and processed successfully!');
+        return back()->with('success', 'Sitemap submitted and queued for crawling.');
     }
 
     /**

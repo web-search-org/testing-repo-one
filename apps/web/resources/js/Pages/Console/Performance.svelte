@@ -2,9 +2,9 @@
     import { Link } from '@inertiajs/svelte';
     import Navbar from '../../Components/Navbar.svelte';
     import Footer from '../../Components/Footer.svelte';
-    import { SearchCheck, BarChart3, Filter, ArrowUpDown, Download, Search } from 'lucide-svelte';
+    import { SearchCheck, BarChart3, Search } from 'lucide-svelte';
 
-    let { currentDomain = {}, performance = {}, domains = [] } = $props();
+    let { currentDomain = null, performance = {}, domains = [] } = $props();
 
     let activeTab = $state('queries'); // 'queries' | 'pages'
     let tableFilter = $state('');
@@ -19,7 +19,7 @@
 </script>
 
 <svelte:head>
-    <title>Performance Analytics - {currentDomain.name} - Web-Search Console</title>
+    <title>Performance Analytics {currentDomain?.name ? `- ${currentDomain.name}` : ''} - Web-Search Console</title>
 </svelte:head>
 
 <div class="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
@@ -39,15 +39,17 @@
             </div>
 
             <!-- Property Switcher -->
-            <select
-                value={currentDomain.name}
-                onchange={(e) => window.location.href = `/console/performance?domain=${encodeURIComponent(e.currentTarget.value)}`}
-                class="bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-xl text-xs font-semibold focus:outline-none"
-            >
-                {#each domains as d}
-                    <option value={d.name}>{d.name}</option>
-                {/each}
-            </select>
+            {#if domains.length > 0 && currentDomain}
+                <select
+                    value={currentDomain.name}
+                    onchange={(e) => window.location.href = `/console/performance?domain=${encodeURIComponent(e.currentTarget.value)}`}
+                    class="bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-xl text-xs font-semibold focus:outline-none"
+                >
+                    {#each domains as d}
+                        <option value={d.name}>{d.name}</option>
+                    {/each}
+                </select>
+            {/if}
         </div>
     </div>
 
@@ -55,7 +57,7 @@
     <div class="border-b border-slate-200/80 dark:border-slate-800/80 bg-white/50 dark:bg-slate-950/50">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center gap-2 overflow-x-auto py-2">
             <Link
-                href={`/console?domain=${currentDomain.name}`}
+                href={`/console${currentDomain ? `?domain=${currentDomain.name}` : ''}`}
                 class="px-3.5 py-1.5 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
             >
                 Overview
@@ -64,13 +66,13 @@
                 Performance
             </span>
             <Link
-                href={`/console/inspect?url=https://${currentDomain.name}`}
+                href="/console/inspect"
                 class="px-3.5 py-1.5 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
             >
                 URL Inspection
             </Link>
             <Link
-                href={`/console/sitemaps?domain=${currentDomain.name}`}
+                href={`/console/sitemaps${currentDomain ? `?domain=${currentDomain.name}` : ''}`}
                 class="px-3.5 py-1.5 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
             >
                 Sitemaps
@@ -108,7 +110,7 @@
             <div class="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border-t-4 border-t-amber-500 border border-slate-200/80 dark:border-slate-800/80 shadow-2xs">
                 <span class="text-xs font-semibold text-slate-400 uppercase">Average Position</span>
                 <div class="text-3xl font-extrabold font-mono text-amber-500 mt-1">
-                    #{performance.summary?.averagePosition || 1.0}
+                    #{performance.summary?.averagePosition || 0}
                 </div>
                 <span class="text-[11px] text-slate-400">Average ranking rank</span>
             </div>
@@ -172,7 +174,7 @@
                                 </tr>
                             {:else}
                                 <tr>
-                                    <td colspan="5" class="px-5 py-8 text-center text-slate-400 font-sans">No queries match filter.</td>
+                                    <td colspan="5" class="px-5 py-8 text-center text-slate-400 font-sans">No search queries recorded yet.</td>
                                 </tr>
                             {/each}
                         {:else}
@@ -190,7 +192,7 @@
                                 </tr>
                             {:else}
                                 <tr>
-                                    <td colspan="5" class="px-5 py-8 text-center text-slate-400 font-sans">No pages match filter.</td>
+                                    <td colspan="5" class="px-5 py-8 text-center text-slate-400 font-sans">No indexed pages recorded yet.</td>
                                 </tr>
                             {/each}
                         {/if}

@@ -18,7 +18,6 @@
         Layers, 
         Cpu, 
         Clock,
-        FileCode,
         Sparkles
     } from 'lucide-svelte';
 
@@ -59,7 +58,7 @@
             <div class="flex items-center gap-3 self-start md:self-auto">
                 <button
                     onclick={() => window.location.reload()}
-                    class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-2xs"
+                    class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-2xs cursor-pointer"
                 >
                     <RefreshCw class="w-3.5 h-3.5" />
                     Live Refresh
@@ -106,7 +105,7 @@
                     <Zap class="w-4 h-4 text-amber-500" />
                 </div>
                 <div class="text-2xl font-bold font-mono text-amber-500">
-                    {summary.averageQueryTimeMs || 1.2} <span class="text-xs font-normal">ms</span>
+                    {summary.averageQueryTimeMs || 0} <span class="text-xs font-normal">ms</span>
                 </div>
                 <span class="text-[11px] text-slate-400">BM25 Ranker latency</span>
             </div>
@@ -210,6 +209,12 @@
                                         </a>
                                     </td>
                                 </tr>
+                            {:else}
+                                <tr>
+                                    <td colspan="5" class="px-5 py-8 text-center text-slate-400 font-sans">
+                                        No domain properties indexed yet. Start by crawling a website.
+                                    </td>
+                                </tr>
                             {/each}
                         </tbody>
                     </table>
@@ -239,6 +244,8 @@
                                     ></div>
                                 </div>
                             </div>
+                        {:else}
+                            <div class="text-center text-xs text-slate-400 py-4">No indexed documents yet.</div>
                         {/each}
                     </div>
                 </div>
@@ -256,6 +263,8 @@
                                 <span class="font-mono font-bold text-indigo-600 dark:text-indigo-400">{t.tld}</span>
                                 <span class="text-slate-500 ml-1">({t.percentage}%)</span>
                             </div>
+                        {:else}
+                            <div class="text-center text-xs text-slate-400 py-4 w-full">No domains recorded.</div>
                         {/each}
                     </div>
                 </div>
@@ -285,6 +294,10 @@
                                 <span class="text-slate-400 text-[11px]">{tq.avgTime} ms</span>
                             </div>
                         </div>
+                    {:else}
+                        <div class="text-center text-xs text-slate-400 py-8">
+                            No search queries logged yet. Search terms will appear here in real time.
+                        </div>
                     {/each}
                 </div>
             </div>
@@ -306,7 +319,7 @@
                                     <div class="text-[11px] text-slate-400 font-mono">
                                         {#if node.latency}Latency: {node.latency}{/if}
                                         {#if node.hitRate}Hit Rate: {node.hitRate}{/if}
-                                        {#if node.activeWorkers}Workers: {node.activeWorkers}{/if}
+                                        {#if node.activeWorkers !== undefined}Workers: {node.activeWorkers}{/if}
                                     </div>
                                 </div>
                             </div>
@@ -354,6 +367,10 @@
                         <span class="text-[11px] font-mono text-slate-400 shrink-0">
                             {new Date(page.crawled_at || page.created_at).toLocaleTimeString()}
                         </span>
+                    </div>
+                {:else}
+                    <div class="py-8 text-center text-slate-400 text-xs">
+                        No documents crawled yet. Launch the crawler from <Link href="/crawler" class="text-indigo-600 underline">Crawler Dashboard</Link> to start indexing.
                     </div>
                 {/each}
             </div>
