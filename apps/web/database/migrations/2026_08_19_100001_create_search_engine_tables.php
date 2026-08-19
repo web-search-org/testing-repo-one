@@ -12,20 +12,24 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('domains', function (Blueprint $table) {
-            $table->id();
+            $table->uuid('id')->primary();
             $table->string('name')->unique()->index();
             $table->string('protocol')->default('https');
             $table->string('favicon_url')->nullable();
             $table->float('domain_rank')->default(1.0);
             $table->integer('total_pages')->default(0);
             $table->string('crawl_status')->default('idle'); // idle, crawling, paused, blocked
+            $table->string('verification_token')->nullable()->index();
+            $table->boolean('is_verified')->default(false)->index();
+            $table->string('verification_method')->nullable(); // dns_txt, meta_tag, file_upload
+            $table->timestamp('verified_at')->nullable();
             $table->timestamp('last_crawled_at')->nullable();
             $table->timestamps();
         });
 
         Schema::create('web_pages', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('domain_id')->nullable()->constrained('domains')->nullOnDelete();
+            $table->uuid('id')->primary();
+            $table->foreignUuid('domain_id')->nullable()->constrained('domains')->nullOnDelete();
             $table->string('url', 2048)->unique();
             $table->string('domain')->index();
             $table->string('title')->nullable()->index();
@@ -45,7 +49,35 @@ return new class extends Migration
             $table->integer('in_links_count')->default(0);
             $table->integer('out_links_count')->default(0);
             $table->boolean('is_indexed')->default(true)->index();
+            $table->string('index_status')->default('indexed')->index(); // indexed, excluded_robots, not_found, server_error, duplicate
+            $table->boolean('mobile_friendly')->default(true);
+            $table->timestamp('last_inspected_at')->nullable();
             $table->timestamp('crawled_at')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('sitemaps', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('domain_id')->constrained('domains')->cascadeOnDelete();
+            $table->string('url', 2048);
+            $table->string('status')->default('submitted')->index(); // submitted, processing, success, error
+            $table->integer('total_urls')->default(0);
+            $table->integer('indexed_urls')->default(0);
+            $table->text('error_message')->nullable();
+            $table->timestamp('last_crawled_at')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('domain_performances', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('domain_id')->constrained('domains')->cascadeOnDelete();
+            $table->string('query')->index();
+            $table->string('page_url', 2048)->nullable();
+            $table->integer('clicks')->default(0);
+            $table->integer('impressions')->default(0);
+            $table->float('ctr')->default(0.0);
+            $table->float('avg_position')->default(1.0);
+            $table->date('recorded_date')->index();
             $table->timestamps();
         });
 
@@ -68,7 +100,7 @@ return new class extends Migration
         });
 
         Schema::create('search_queries', function (Blueprint $table) {
-            $table->id();
+            $table->uuid('id')->primary();
             $table->string('query')->index();
             $table->string('category')->default('all');
             $table->integer('results_count')->default(0);
@@ -85,6 +117,8 @@ return new class extends Migration
     {
         Schema::dropIfExists('search_queries');
         Schema::dropIfExists('crawl_jobs');
+        Schema::dropIfExists('domain_performances');
+        Schema::dropIfExists('sitemaps');
         Schema::dropIfExists('web_pages');
         Schema::dropIfExists('domains');
     }

@@ -2,7 +2,7 @@
     import { Link } from '@inertiajs/svelte';
     import ThemeToggle from './ThemeToggle.svelte';
     import SearchBar from './SearchBar.svelte';
-    import { Globe, Database, BarChart3, BookOpen, Github } from 'lucide-svelte';
+    import { Globe, Database, BarChart3, BookOpen, Github, SlidersHorizontal, SearchCheck } from 'lucide-svelte';
 
     let { showSearch = false, initialQuery = '' } = $props();
 </script>
@@ -24,7 +24,7 @@
             </Link>
 
             {#if showSearch}
-                <div class="hidden md:block w-96 lg:w-[480px]">
+                <div class="hidden md:block w-96 lg:w-[460px]">
                     <SearchBar initialQuery={initialQuery} size="small" />
                 </div>
             {/if}
@@ -32,6 +32,14 @@
 
         <!-- Navigation Links -->
         <div class="flex items-center gap-1 sm:gap-2">
+            <Link
+                href="/console"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors"
+            >
+                <SearchCheck class="w-3.5 h-3.5" />
+                <span>Search Console</span>
+            </Link>
+
             <Link
                 href="/crawler"
                 class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
@@ -53,7 +61,7 @@
                 class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
             >
                 <BookOpen class="w-3.5 h-3.5" />
-                <span class="hidden sm:inline">API / Docs</span>
+                <span class="hidden sm:inline">API</span>
             </Link>
 
             <div class="h-4 w-px bg-slate-200 dark:bg-slate-800 mx-1"></div>

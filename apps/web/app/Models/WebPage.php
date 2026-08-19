@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class WebPage extends Model
 {
-    use HasFactory;
+    use HasFactory, HasUuids;
 
     protected $fillable = [
         'domain_id',
@@ -31,6 +32,9 @@ class WebPage extends Model
         'in_links_count',
         'out_links_count',
         'is_indexed',
+        'index_status',
+        'mobile_friendly',
+        'last_inspected_at',
         'crawled_at',
     ];
 
@@ -43,6 +47,8 @@ class WebPage extends Model
         'in_links_count' => 'integer',
         'out_links_count' => 'integer',
         'is_indexed' => 'boolean',
+        'mobile_friendly' => 'boolean',
+        'last_inspected_at' => 'datetime',
         'crawled_at' => 'datetime',
     ];
 

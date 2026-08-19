@@ -6,6 +6,8 @@ use App\Models\Domain;
 use App\Models\WebPage;
 use App\Models\SearchQuery;
 use App\Models\CrawlJob;
+use App\Models\Sitemap;
+use App\Models\DomainPerformance;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
 
@@ -23,6 +25,10 @@ class DatabaseSeeder extends Seeder
                 'favicon_url' => 'https://www.google.com/s2/favicons?domain=web-search.org&sz=64',
                 'domain_rank' => 10.0,
                 'total_pages' => 3,
+                'is_verified' => true,
+                'verification_method' => 'dns_txt',
+                'verification_token' => 'web-search-site-verification=ws_auth_root_domain_verified',
+                'verified_at' => now()->subDays(30),
                 'crawl_status' => 'idle',
             ],
             [
@@ -31,6 +37,10 @@ class DatabaseSeeder extends Seeder
                 'favicon_url' => 'https://www.google.com/s2/favicons?domain=svelte.dev&sz=64',
                 'domain_rank' => 9.5,
                 'total_pages' => 2,
+                'is_verified' => true,
+                'verification_method' => 'meta_tag',
+                'verification_token' => 'web-search-site-verification=ws_auth_svelte_verified',
+                'verified_at' => now()->subDays(15),
                 'crawl_status' => 'idle',
             ],
             [
@@ -39,6 +49,10 @@ class DatabaseSeeder extends Seeder
                 'favicon_url' => 'https://www.google.com/s2/favicons?domain=laravel.com&sz=64',
                 'domain_rank' => 9.6,
                 'total_pages' => 2,
+                'is_verified' => true,
+                'verification_method' => 'dns_txt',
+                'verification_token' => 'web-search-site-verification=ws_auth_laravel_verified',
+                'verified_at' => now()->subDays(20),
                 'crawl_status' => 'idle',
             ],
             [
@@ -47,6 +61,7 @@ class DatabaseSeeder extends Seeder
                 'favicon_url' => 'https://www.google.com/s2/favicons?domain=python.org&sz=64',
                 'domain_rank' => 9.8,
                 'total_pages' => 1,
+                'is_verified' => false,
                 'crawl_status' => 'idle',
             ],
             [
@@ -55,6 +70,7 @@ class DatabaseSeeder extends Seeder
                 'favicon_url' => 'https://www.google.com/s2/favicons?domain=github.com&sz=64',
                 'domain_rank' => 10.0,
                 'total_pages' => 2,
+                'is_verified' => false,
                 'crawl_status' => 'idle',
             ],
         ];
@@ -78,8 +94,11 @@ class DatabaseSeeder extends Seeder
                 'category' => 'tech',
                 'language' => 'en',
                 'page_rank' => 10.0,
+                'http_status' => 200,
                 'response_time_ms' => 12.4,
                 'is_indexed' => true,
+                'index_status' => 'indexed',
+                'mobile_friendly' => true,
                 'crawled_at' => now(),
             ],
             [
@@ -94,8 +113,11 @@ class DatabaseSeeder extends Seeder
                 'category' => 'code',
                 'language' => 'en',
                 'page_rank' => 8.5,
+                'http_status' => 200,
                 'response_time_ms' => 10.2,
                 'is_indexed' => true,
+                'index_status' => 'indexed',
+                'mobile_friendly' => true,
                 'crawled_at' => now(),
             ],
             [
@@ -110,8 +132,11 @@ class DatabaseSeeder extends Seeder
                 'category' => 'tech',
                 'language' => 'en',
                 'page_rank' => 9.6,
+                'http_status' => 200,
                 'response_time_ms' => 15.1,
                 'is_indexed' => true,
+                'index_status' => 'indexed',
+                'mobile_friendly' => true,
                 'crawled_at' => now(),
             ],
             [
@@ -126,8 +151,11 @@ class DatabaseSeeder extends Seeder
                 'category' => 'tech',
                 'language' => 'en',
                 'page_rank' => 9.7,
+                'http_status' => 200,
                 'response_time_ms' => 14.8,
                 'is_indexed' => true,
+                'index_status' => 'indexed',
+                'mobile_friendly' => true,
                 'crawled_at' => now(),
             ],
             [
@@ -142,8 +170,11 @@ class DatabaseSeeder extends Seeder
                 'category' => 'tech',
                 'language' => 'en',
                 'page_rank' => 9.8,
+                'http_status' => 200,
                 'response_time_ms' => 18.0,
                 'is_indexed' => true,
+                'index_status' => 'indexed',
+                'mobile_friendly' => true,
                 'crawled_at' => now(),
             ],
             [
@@ -158,14 +189,62 @@ class DatabaseSeeder extends Seeder
                 'category' => 'code',
                 'language' => 'en',
                 'page_rank' => 9.4,
+                'http_status' => 200,
                 'response_time_ms' => 22.0,
                 'is_indexed' => true,
+                'index_status' => 'indexed',
+                'mobile_friendly' => true,
                 'crawled_at' => now(),
             ],
         ];
 
         foreach ($pages as $p) {
             WebPage::updateOrCreate(['url' => $p['url']], $p);
+        }
+
+        // Seed Sitemaps
+        Sitemap::updateOrCreate(
+            ['url' => 'https://web-search.org/sitemap.xml'],
+            [
+                'domain_id' => $domainMap['web-search.org'],
+                'status' => 'success',
+                'total_urls' => 24,
+                'indexed_urls' => 24,
+                'last_crawled_at' => now()->subHours(2),
+            ]
+        );
+
+        Sitemap::updateOrCreate(
+            ['url' => 'https://svelte.dev/sitemap.xml'],
+            [
+                'domain_id' => $domainMap['svelte.dev'],
+                'status' => 'success',
+                'total_urls' => 18,
+                'indexed_urls' => 18,
+                'last_crawled_at' => now()->subHours(5),
+            ]
+        );
+
+        // Seed Search Console Performance Metrics
+        $perfData = [
+            ['query' => 'open source search engine', 'clicks' => 312, 'impressions' => 4500, 'ctr' => 6.9, 'avg_position' => 1.2],
+            ['query' => 'privacy search engine', 'clicks' => 195, 'impressions' => 3200, 'ctr' => 6.1, 'avg_position' => 1.5],
+            ['query' => 'web-search org', 'clicks' => 140, 'impressions' => 1650, 'ctr' => 8.5, 'avg_position' => 1.0],
+            ['query' => 'laravel svelte monorepo', 'clicks' => 85, 'impressions' => 1400, 'ctr' => 6.0, 'avg_position' => 2.3],
+            ['query' => 'python async crawler', 'clicks' => 62, 'impressions' => 980, 'ctr' => 6.3, 'avg_position' => 2.8],
+        ];
+
+        foreach ($perfData as $item) {
+            DomainPerformance::create([
+                'domain_id' => $domainMap['web-search.org'],
+                'query' => $item['query'],
+                'page_url' => 'https://web-search.org',
+                'clicks' => $item['clicks'],
+                'impressions' => $item['impressions'],
+                'ctr' => $item['ctr'],
+                'avg_position' => $item['avg_position'],
+                'recorded_date' => now()->toDateString(),
+            ]);
         }
 
         // Seed sample queries

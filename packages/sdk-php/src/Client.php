@@ -38,24 +38,15 @@ class Client
 
     /**
      * Perform a search query
-     *
-     * @param string|array $query
-     * @return array
-     * @throws WebSearchException
      */
     public function search(string|array $query): array
     {
         $params = is_string($query) ? ['q' => $query] : $query;
-
         return $this->request('GET', '/api/v1/search', ['query' => $params]);
     }
 
     /**
      * Autocomplete suggestions
-     *
-     * @param string $query
-     * @return array
-     * @throws WebSearchException
      */
     public function suggest(string $query): array
     {
@@ -64,10 +55,6 @@ class Client
 
     /**
      * Submit a URL to be crawled
-     *
-     * @param array $jobData
-     * @return array
-     * @throws WebSearchException
      */
     public function submitCrawl(array $jobData): array
     {
@@ -76,10 +63,6 @@ class Client
 
     /**
      * Get crawl job status
-     *
-     * @param string $jobId
-     * @return array
-     * @throws WebSearchException
      */
     public function getCrawlStatus(string $jobId): array
     {
@@ -87,10 +70,31 @@ class Client
     }
 
     /**
+     * Search Console: Inspect a URL
+     */
+    public function inspectUrl(string $url): array
+    {
+        return $this->request('GET', '/api/v1/console/inspect', ['query' => ['url' => $url]]);
+    }
+
+    /**
+     * Search Console: Request priority indexing
+     */
+    public function requestIndexing(string $url): array
+    {
+        return $this->request('POST', '/api/v1/console/request-indexing', ['json' => ['url' => $url]]);
+    }
+
+    /**
+     * Search Console: Get domain performance
+     */
+    public function getPerformance(string $domain, string $period = '28d'): array
+    {
+        return $this->request('GET', '/api/v1/console/performance', ['query' => ['domain' => $domain, 'period' => $period]]);
+    }
+
+    /**
      * Get engine statistics
-     *
-     * @return array
-     * @throws WebSearchException
      */
     public function getStats(): array
     {

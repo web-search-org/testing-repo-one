@@ -5,6 +5,8 @@ import type {
   CrawlJob,
   CrawlJobRequest,
   EngineStats,
+  UrlInspectionResult,
+  PerformanceMetrics,
 } from '@web-search/shared-types';
 
 export interface WebSearchClientOptions {
@@ -116,5 +118,39 @@ export class WebSearchClient {
    */
   public async getStats(): Promise<EngineStats> {
     return this.request<EngineStats>('/api/v1/stats');
+  }
+
+  /**
+   * Search Console: Inspect a URL in the search index
+   */
+  public async inspectUrl(url: string): Promise<UrlInspectionResult> {
+    return this.request<UrlInspectionResult>(`/api/v1/console/inspect?url=${encodeURIComponent(url)}`);
+  }
+
+  /**
+   * Search Console: Request priority crawl & re-indexing
+   */
+  public async requestIndexing(url: string): Promise<{ success: boolean; message: string; jobId: string }> {
+    return this.request('/api/v1/console/request-indexing', {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    });
+  }
+
+  /**
+   * Search Console: Retrieve performance metrics for a domain
+   */
+  public async getPerformance(domain: string, period: string = '28d'): Promise<PerformanceMetrics> {
+    return this.request<PerformanceMetrics>(`/api/v1/console/performance?domain=${encodeURIComponent(domain)}&period=${encodeURIComponent(period)}`);
+  }
+
+  /**
+   * Search Console: Verify domain ownership
+   */
+  public async verifyDomain(domain: string, method: 'dns_txt' | 'meta_tag' = 'meta_tag'): Promise<{ verified: boolean; message: string }> {
+    return this.request('/api/v1/console/verify-domain', {
+      method: 'POST',
+      body: JSON.stringify({ domain, method }),
+    });
   }
 }

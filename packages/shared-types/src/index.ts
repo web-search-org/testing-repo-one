@@ -2,6 +2,8 @@
  * Web-Search.org - Shared Types and Protocol Definitions
  */
 
+export type UUID = string;
+
 export type SearchCategory = 'all' | 'images' | 'news' | 'videos' | 'tech' | 'code';
 export type SafeSearchLevel = 'strict' | 'moderate' | 'off';
 export type TimeFilter = 'all' | 'day' | 'week' | 'month' | 'year';
@@ -20,7 +22,7 @@ export interface SearchQuery {
 }
 
 export interface SearchResultItem {
-  id: string | number;
+  id: UUID;
   url: string;
   domain: string;
   title: string;
@@ -77,7 +79,7 @@ export interface CrawlJobRequest {
 }
 
 export interface CrawlJob {
-  id: string;
+  id: UUID;
   seedUrl: string;
   status: CrawlJobStatus;
   pagesCrawled: number;
@@ -112,7 +114,7 @@ export interface ExtractedPage {
 }
 
 export interface IndexerDocument {
-  id: string;
+  id: UUID;
   url: string;
   domain: string;
   title: string;
@@ -135,4 +137,79 @@ export interface EngineStats {
   queriesLast24h: number;
   systemHealth: 'healthy' | 'degraded' | 'unhealthy';
   uptimeSeconds: number;
+}
+
+/**
+ * Web-Search Console Type Definitions
+ */
+export interface UrlInspectionResult {
+  id?: UUID;
+  url: string;
+  domain: string;
+  isIndexed: boolean;
+  indexStatus: string;
+  verdict: string;
+  verdictDescription: string;
+  coverage: {
+    discovery: string;
+    crawlTime: string | null;
+    crawledAs: string;
+    crawlAllowed: string;
+    pageFetch: string;
+    indexingAllowed: string;
+    userCanonical?: string;
+    engineCanonical?: string;
+  };
+  enhancements: {
+    mobileFriendly: boolean;
+    https: boolean;
+    pageRank?: number;
+    wordCount?: number;
+  };
+  metadata?: {
+    title: string;
+    description: string;
+    keywords: string[];
+    headings: string[];
+    ogImage?: string;
+    favicon?: string;
+    category?: string;
+    language?: string;
+  } | null;
+}
+
+export interface PerformanceMetrics {
+  domain: string;
+  period: string;
+  summary: {
+    totalClicks: number;
+    totalImpressions: number;
+    averageCtr: number;
+    averagePosition: number;
+  };
+  queries: Array<{
+    query: string;
+    clicks: number;
+    impressions: number;
+    ctr: number;
+    position: number;
+  }>;
+  pages: Array<{
+    url: string;
+    title: string;
+    clicks: number;
+    impressions: number;
+    ctr: number;
+    position: number;
+  }>;
+}
+
+export interface SitemapItem {
+  id: UUID;
+  domainId: UUID;
+  url: string;
+  status: 'submitted' | 'processing' | 'success' | 'error';
+  totalUrls: number;
+  indexedUrls: number;
+  lastCrawledAt?: string;
 }
