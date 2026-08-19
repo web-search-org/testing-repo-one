@@ -21,7 +21,7 @@ class StatsApiController extends Controller
         $totalCrawled = WebPage::count();
         $activeCrawlJobs = CrawlJob::where('status', 'running')->count();
         $queriesLast24h = SearchQuery::where('created_at', '>=', now()->subDay())->count();
-        $avgQueryTime = round(SearchQuery::avg('execution_time_ms') ?: 1.8, 2);
+        $avgQueryTime = round((float) (SearchQuery::avg('execution_time_ms') ?: 0.0), 2);
 
         return response()->json([
             'totalDocuments' => $totalPages,

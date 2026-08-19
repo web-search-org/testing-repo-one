@@ -4,7 +4,7 @@
     import Footer from '../Components/Footer.svelte';
     import InstantAnswer from '../Components/InstantAnswer.svelte';
     import ResultItem from '../Components/ResultItem.svelte';
-    import { Globe, Code2, Cpu, Newspaper, Sparkles, Filter, AlertCircle } from 'lucide-svelte';
+    import { Globe, Code2, Cpu, Newspaper, AlertCircle, PlusCircle } from 'lucide-svelte';
 
     let { searchData = {}, currentQuery = '', currentCategory = 'all', currentPage = 1 } = $props();
 
@@ -20,18 +20,18 @@
     <title>Search: {currentQuery} - Web-Search.org</title>
 </svelte:head>
 
-<div class="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
+<div class="min-h-screen flex flex-col bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
     <Navbar showSearch={true} initialQuery={currentQuery} />
 
-    <!-- Sub-header category navigation -->
-    <div class="border-b border-slate-200/80 dark:border-slate-800/80 bg-white/50 dark:bg-slate-950/50 transition-colors">
+    <!-- Sub-header category navigation (Flat) -->
+    <div class="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 transition-colors">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
-            <div class="flex items-center gap-1 sm:gap-2 overflow-x-auto py-2">
+            <div class="flex items-center gap-1.5 overflow-x-auto py-2">
                 {#each categories as cat}
                     {@const Icon = cat.icon}
                     <a
                         href={`/search?q=${encodeURIComponent(currentQuery)}&category=${cat.id}`}
-                        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all whitespace-nowrap {currentCategory === cat.id ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900'}"
+                        class="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all whitespace-nowrap {currentCategory === cat.id ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'}"
                     >
                         <Icon class="w-3.5 h-3.5" />
                         <span>{cat.label}</span>
@@ -40,7 +40,7 @@
             </div>
 
             <!-- Execution Time -->
-            <div class="hidden sm:block text-xs font-mono text-slate-400 dark:text-slate-500">
+            <div class="hidden sm:block text-xs font-mono text-slate-400">
                 {searchData.totalHits} results ({searchData.executionTimeMs} ms)
             </div>
         </div>
@@ -63,11 +63,11 @@
 
             <!-- Pagination -->
             {#if searchData.totalPages > 1}
-                <div class="mt-10 mb-8 flex items-center justify-center gap-2">
+                <div class="mt-8 mb-6 flex items-center justify-center gap-2">
                     {#if searchData.page > 1}
                         <a
                             href={`/search?q=${encodeURIComponent(currentQuery)}&category=${currentCategory}&page=${searchData.page - 1}`}
-                            class="px-4 py-2 rounded-xl text-xs font-medium bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 hover:text-indigo-600 transition-colors shadow-2xs"
+                            class="px-3.5 py-1.5 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:text-indigo-600 transition-colors"
                         >
                             ← Previous
                         </a>
@@ -80,7 +80,7 @@
                     {#if searchData.page < searchData.totalPages}
                         <a
                             href={`/search?q=${encodeURIComponent(currentQuery)}&category=${currentCategory}&page=${searchData.page + 1}`}
-                            class="px-4 py-2 rounded-xl text-xs font-medium bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 hover:text-indigo-600 transition-colors shadow-2xs"
+                            class="px-3.5 py-1.5 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:text-indigo-600 transition-colors"
                         >
                             Next →
                         </a>
@@ -89,29 +89,29 @@
             {/if}
         {:else}
             <!-- Empty State -->
-            <div class="text-center py-16 px-4">
-                <div class="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 mx-auto flex items-center justify-center mb-4">
-                    <AlertCircle class="w-6 h-6" />
+            <div class="text-center py-12 px-4 space-y-3">
+                <div class="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 mx-auto flex items-center justify-center">
+                    <AlertCircle class="w-5 h-5" />
                 </div>
-                <h2 class="text-lg font-semibold text-slate-900 dark:text-white">
+                <h2 class="text-base font-bold text-slate-900 dark:text-white">
                     No matching results found for "{currentQuery}"
                 </h2>
-                <p class="mt-2 text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-                    Try checking for spelling errors, using more general search terms, or submitting this domain to our distributed crawler!
+                <p class="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                    Submit this domain to be crawled and added to the search index!
                 </p>
 
-                <div class="mt-6 flex justify-center gap-3">
+                <div class="pt-2 flex justify-center gap-2">
                     <Link
-                        href="/crawler"
-                        class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium shadow-sm transition-colors"
+                        href="/submit"
+                        class="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-colors"
                     >
-                        Index a New Website with Crawler
+                        Submit Website →
                     </Link>
                     <Link
                         href="/"
-                        class="px-4 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                        class="px-3.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium hover:bg-slate-200 transition-colors"
                     >
-                        Back to Home
+                        Home
                     </Link>
                 </div>
             </div>
@@ -119,15 +119,15 @@
 
         <!-- Related Searches -->
         {#if searchData.suggestions && searchData.suggestions.length > 0}
-            <div class="mt-8 pt-6 border-t border-slate-200/80 dark:border-slate-800/80">
-                <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">
+            <div class="mt-8 pt-6 border-t border-slate-200 dark:border-slate-800">
+                <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2.5">
                     Related Searches
                 </h2>
-                <div class="flex flex-wrap gap-2">
+                <div class="flex flex-wrap gap-1.5">
                     {#each searchData.suggestions as sug}
                         <a
                             href={`/search?q=${encodeURIComponent(sug)}`}
-                            class="px-3 py-1.5 rounded-xl text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:border-indigo-300 dark:hover:border-indigo-800 transition-all shadow-2xs"
+                            class="px-2.5 py-1 rounded-md text-xs bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:text-indigo-600 transition-colors"
                         >
                             {sug}
                         </a>
