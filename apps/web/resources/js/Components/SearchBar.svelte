@@ -79,7 +79,7 @@
 
 <div class="relative w-full">
     <form id="search-form" action="/search" method="GET" class="relative flex items-center">
-        <div class="absolute left-4 pointer-events-none text-slate-400">
+        <div class="absolute left-4 pointer-events-none text-zinc-400 dark:text-zinc-500">
             <Search class={size === 'large' ? 'w-5 h-5' : 'w-4 h-4'} />
         </div>
 
@@ -92,17 +92,17 @@
             onkeydown={handleKeydown}
             onfocus={() => query.length >= 2 && suggestions.length > 0 && (showSuggestions = true)}
             onblur={() => setTimeout(() => showSuggestions = false, 200)}
-            placeholder="Search the open web or ask anything..."
+            placeholder="Search the open web..."
             autocomplete="off"
-            class="w-full rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-600 transition-colors placeholder:text-slate-400 {size === 'large' ? 'py-3.5 pl-12 pr-24 text-base' : 'py-2 pl-10 pr-16 text-xs'}"
+            class="w-full rounded-xl bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-800 text-black dark:text-white focus:outline-none focus:ring-1 focus:ring-black dark:focus:ring-white focus:border-black dark:focus:border-white transition-colors placeholder:text-zinc-400 dark:placeholder:text-zinc-600 {size === 'large' ? 'py-3.5 pl-12 pr-24 text-base shadow-xs' : 'py-2 pl-10 pr-16 text-xs'}"
         />
 
-        <div class="absolute right-2.5 flex items-center gap-1">
+        <div class="absolute right-2 flex items-center gap-1">
             {#if query}
                 <button
                     type="button"
                     onclick={clearQuery}
-                    class="p-1 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                    class="p-1 rounded text-zinc-400 hover:text-black dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors cursor-pointer"
                     aria-label="Clear Search"
                 >
                     <X class="w-4 h-4" />
@@ -110,7 +110,7 @@
             {/if}
             <button
                 type="submit"
-                class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs transition-colors cursor-pointer"
+                class="inline-flex items-center px-3 py-1.5 rounded-lg bg-black text-white dark:bg-white dark:text-black font-semibold text-xs hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors cursor-pointer"
             >
                 Search
             </button>
@@ -118,18 +118,18 @@
     </form>
 
     {#if showSuggestions && suggestions.length > 0}
-        <div class="absolute top-full left-0 right-0 mt-1.5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-lg overflow-hidden z-50 py-1">
+        <div class="absolute top-full left-0 right-0 mt-1.5 bg-white dark:bg-zinc-950 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-lg overflow-hidden z-50 py-1">
             {#each suggestions as s, idx}
                 <button
                     type="button"
                     onmousedown={() => selectSuggestion(s)}
-                    class="w-full text-left px-3.5 py-2 flex items-center justify-between text-xs hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 transition-colors {selectedIndex === idx ? 'bg-slate-100 dark:bg-slate-800 font-semibold text-indigo-600 dark:text-indigo-400' : ''}"
+                    class="w-full text-left px-3.5 py-2 flex items-center justify-between text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900 text-zinc-800 dark:text-zinc-200 transition-colors {selectedIndex === idx ? 'bg-zinc-100 dark:bg-zinc-900 font-semibold text-black dark:text-white' : ''}"
                 >
                     <div class="flex items-center gap-2.5">
-                        <Search class="w-3.5 h-3.5 text-slate-400" />
+                        <Search class="w-3.5 h-3.5 text-zinc-400" />
                         <span>{s}</span>
                     </div>
-                    <ArrowUpRight class="w-3 h-3 text-slate-400" />
+                    <ArrowUpRight class="w-3 h-3 text-zinc-400" />
                 </button>
             {/each}
         </div>

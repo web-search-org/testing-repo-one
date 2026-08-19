@@ -5,17 +5,23 @@
     let isDark = $state(false);
 
     onMount(() => {
-        isDark = document.documentElement.classList.contains('dark') ||
-            (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-        updateTheme();
+        const storedTheme = localStorage.getItem('theme');
+        if (storedTheme === 'dark') {
+            isDark = true;
+        } else if (storedTheme === 'light') {
+            isDark = false;
+        } else {
+            isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        }
+        applyTheme();
     });
 
     function toggleTheme() {
         isDark = !isDark;
-        updateTheme();
+        applyTheme();
     }
 
-    function updateTheme() {
+    function applyTheme() {
         if (isDark) {
             document.documentElement.classList.add('dark');
             localStorage.setItem('theme', 'dark');
@@ -28,12 +34,13 @@
 
 <button
     onclick={toggleTheme}
-    aria-label="Toggle Dark Mode"
-    class="p-2 rounded-xl text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+    aria-label="Toggle Light / Dark Mode"
+    title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+    class="p-2 rounded-lg text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 transition-colors cursor-pointer"
 >
     {#if isDark}
-        <Sun class="w-5 h-5" />
+        <Sun class="w-4 h-4" />
     {:else}
-        <Moon class="w-5 h-5" />
+        <Moon class="w-4 h-4" />
     {/if}
 </button>
