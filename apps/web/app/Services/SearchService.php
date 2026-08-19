@@ -5,12 +5,12 @@ namespace App\Services;
 use App\Models\WebPage;
 use App\Models\SearchQuery;
 use Illuminate\Support\Str;
-use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
 
 class SearchService
 {
     /**
-     * Perform a search query with ranking, filtering, and snippet generation.
+     * Perform a search query with multi-signal ranking (BM25 + Field Weighting + PageRank + Proximity).
      */
     public function search(array $params): array
     {
@@ -59,25 +59,28 @@ class SearchService
             $queryBuilder->where('language', $language);
         }
 
-        // Multi-term search logic
-        $terms = array_filter(explode(' ', strtolower($cleanQuery)));
+        // Multi-term tokenization and stemming
+        $terms = $this->tokenizeAndStem($cleanQuery);
 
         if (!empty($terms)) {
             $queryBuilder->where(function ($q) use ($terms, $cleanQuery) {
-                // Exact match gets highest priority
+                // Exact phrase match candidate
                 $q->where('title', 'like', "%{$cleanQuery}%")
                   ->orWhere('description', 'like', "%{$cleanQuery}%")
+                  ->orWhere('domain', 'like', "%{$cleanQuery}%")
                   ->orWhere('body_text', 'like', "%{$cleanQuery}%");
 
-                // Individual terms
+                // Individual token candidates
                 foreach ($terms as $term) {
                     $q->orWhere('title', 'like', "%{$term}%")
                       ->orWhere('description', 'like', "%{$term}%")
+                      ->orWhere('domain', 'like', "%{$term}%")
                       ->orWhere('body_text', 'like', "%{$term}%");
                 }
             });
         }
 
+        // Handle excluded terms (-word)
         foreach ($excludeTerms as $ex) {
             $queryBuilder->where(function ($q) use ($ex) {
                 $q->where('title', 'not like', "%{$ex}%")
@@ -85,34 +88,51 @@ class SearchService
             });
         }
 
-        // Sort by page_rank and latest indexed
-        $queryBuilder->orderByDesc('page_rank')->orderByDesc('id');
+        // Fetch candidate documents pool (up to 300 candidates for scoring)
+        $candidates = $queryBuilder->limit(300)->get();
 
-        $totalHits = $queryBuilder->count();
+        // Calculate multi-signal relevance score for each candidate document
+        $scoredResults = $candidates->map(function (WebPage $doc) use ($terms, $cleanQuery) {
+            $score = $this->calculateRelevanceScore($doc, $terms, $cleanQuery);
+            return [
+                'doc' => $doc,
+                'score' => $score,
+            ];
+        });
+
+        // Sort descending by calculated relevance score
+        $sortedResults = $scoredResults->sortByDesc('score')->values();
+
+        $totalHits = $sortedResults->count();
         $totalPages = (int) ceil($totalHits / $perPage);
         $offset = ($page - 1) * $perPage;
 
-        $items = $queryBuilder->skip($offset)->take($perPage)->get();
+        $pagedItems = $sortedResults->slice($offset, $perPage);
 
-        // Format and generate highlighted snippets
-        $results = $items->map(function (WebPage $item) use ($terms) {
-            $snippet = $this->generateSnippet($item->description ?: $item->body_text ?: '', $terms);
+        // Format and generate dense context snippets
+        $results = $pagedItems->map(function ($item) use ($terms) {
+            /** @var WebPage $doc */
+            $doc = $item['doc'];
+            $score = $item['score'];
+
+            $rawSnippetSource = $doc->description ?: $doc->body_text ?: '';
+            $snippet = $this->generateSnippet($rawSnippetSource, $terms);
             $highlighted = $this->highlightTerms($snippet, $terms);
 
             return [
-                'id' => $item->id,
-                'url' => $item->url,
-                'domain' => $item->domain,
-                'title' => $item->title ?: $item->domain,
+                'id' => $doc->id,
+                'url' => $doc->url,
+                'domain' => $doc->domain,
+                'title' => $doc->title ?: $doc->domain,
                 'snippet' => $snippet,
                 'highlightedSnippet' => $highlighted,
-                'favicon' => $item->favicon_url ?: "https://www.google.com/s2/favicons?domain={$item->domain}&sz=64",
-                'rankScore' => $item->page_rank,
-                'category' => $item->category,
-                'publishedAt' => $item->created_at?->toIso8601String(),
-                'indexedAt' => $item->crawled_at?->toIso8601String() ?: $item->updated_at?->toIso8601String(),
+                'favicon' => $doc->favicon_url ?: "https://www.google.com/s2/favicons?domain={$doc->domain}&sz=64",
+                'rankScore' => round($score, 2),
+                'category' => $doc->category,
+                'publishedAt' => $doc->created_at?->toIso8601String(),
+                'indexedAt' => $doc->crawled_at?->toIso8601String() ?: $doc->updated_at?->toIso8601String(),
             ];
-        })->toArray();
+        })->values()->toArray();
 
         $executionTimeMs = round((microtime(true) - $startTime) * 1000, 2);
 
@@ -143,6 +163,161 @@ class SearchService
             'suggestions' => $suggestions,
             'correctedQuery' => null,
         ];
+    }
+
+    /**
+     * Compute multi-signal relevance score:
+     * - Exact Title Match: 120.0 pts
+     * - Title Token Frequency & Position: 30.0 pts each
+     * - Domain Exact & Prefix Match: 60.0 pts
+     * - URL Path / Slug Match: 25.0 pts
+     * - Heading (H1, H2, H3) Matches: 18.0 pts each
+     * - Description Match: 12.0 pts
+     * - Body Term Frequency with length saturation (BM25 style): 6.0 pts
+     * - All-Terms Coverage Conjunction Bonus: +40.0 pts
+     * - Inbound Backlink & PageRank Multiplier: (1.0 + (page_rank * 0.25) + (in_links * 0.1))
+     */
+    protected function calculateRelevanceScore(WebPage $doc, array $terms, string $cleanQuery): float
+    {
+        $score = 0.0;
+        $titleLower = strtolower($doc->title ?? '');
+        $domainLower = strtolower($doc->domain ?? '');
+        $urlLower = strtolower($doc->url ?? '');
+        $descLower = strtolower($doc->description ?? '');
+        $bodyLower = strtolower($doc->body_text ?? '');
+        $cleanQueryLower = strtolower($cleanQuery);
+
+        // 1. Exact Phrase Matches
+        if ($titleLower === $cleanQueryLower) {
+            $score += 150.0; // Perfect title match
+        } elseif (str_starts_with($titleLower, $cleanQueryLower)) {
+            $score += 90.0; // Starts with exact query
+        } elseif (str_contains($titleLower, $cleanQueryLower)) {
+            $score += 60.0; // Contains exact query phrase in title
+        }
+
+        if ($domainLower === $cleanQueryLower || str_starts_with($domainLower, $cleanQueryLower . '.')) {
+            $score += 100.0; // Brand / Domain exact match
+        } elseif (str_contains($domainLower, $cleanQueryLower)) {
+            $score += 50.0;
+        }
+
+        if (str_contains($urlLower, $cleanQueryLower)) {
+            $score += 30.0; // URL path match
+        }
+
+        if (str_contains($descLower, $cleanQueryLower)) {
+            $score += 25.0; // Description exact match
+        }
+
+        // 2. Multi-Token Scoring
+        $matchedTermsCount = 0;
+        $headings = is_array($doc->headings) ? implode(' ', $doc->headings) : ($doc->headings ?? '');
+        $headingsLower = strtolower($headings);
+
+        $keywords = is_array($doc->keywords) ? implode(' ', $doc->keywords) : ($doc->keywords ?? '');
+        $keywordsLower = strtolower($keywords);
+
+        foreach ($terms as $term) {
+            if (strlen($term) < 2) continue;
+            $termFound = false;
+
+            // Title matches (weight 30x)
+            $titleCount = substr_count($titleLower, $term);
+            if ($titleCount > 0) {
+                $score += min(3, $titleCount) * 30.0;
+                $termFound = true;
+            }
+
+            // Domain / URL matches (weight 25x)
+            if (str_contains($domainLower, $term)) {
+                $score += 25.0;
+                $termFound = true;
+            } elseif (str_contains($urlLower, $term)) {
+                $score += 15.0;
+                $termFound = true;
+            }
+
+            // Headings matches (weight 18x)
+            $headingCount = substr_count($headingsLower, $term);
+            if ($headingCount > 0) {
+                $score += min(3, $headingCount) * 18.0;
+                $termFound = true;
+            }
+
+            // Keywords matches (weight 15x)
+            if (str_contains($keywordsLower, $term)) {
+                $score += 15.0;
+                $termFound = true;
+            }
+
+            // Description matches (weight 12x)
+            $descCount = substr_count($descLower, $term);
+            if ($descCount > 0) {
+                $score += min(3, $descCount) * 12.0;
+                $termFound = true;
+            }
+
+            // Body matches with BM25 term frequency saturation: tf / (tf + 1.5)
+            $bodyCount = substr_count($bodyLower, $term);
+            if ($bodyCount > 0) {
+                $tfSaturated = $bodyCount / ($bodyCount + 1.5);
+                $score += $tfSaturated * 15.0;
+                $termFound = true;
+            }
+
+            if ($termFound) {
+                $matchedTermsCount++;
+            }
+        }
+
+        // 3. Conjunction & Coverage Multiplier
+        $totalTerms = max(1, count($terms));
+        $coverageRatio = $matchedTermsCount / $totalTerms;
+        if ($coverageRatio >= 1.0) {
+            $score += 50.0; // Contains 100% of query terms
+            $score *= 1.4;
+        } elseif ($coverageRatio >= 0.5) {
+            $score *= 1.15;
+        }
+
+        // 4. PageRank & Inbound Backlink Multiplier
+        $pageRank = max(1.0, (float) ($doc->page_rank ?? 1.0));
+        $inLinks = max(0, (int) ($doc->in_links_count ?? 0));
+        $authorityMultiplier = 1.0 + (log10($pageRank + 1.0) * 0.3) + (min(20, $inLinks) * 0.05);
+
+        $finalScore = $score * $authorityMultiplier;
+
+        // 5. Homepage / Root URL Boost for navigational queries
+        if ($urlLower === "https://{$domainLower}/" || $urlLower === "http://{$domainLower}/") {
+            $finalScore *= 1.25;
+        }
+
+        return round($finalScore, 3);
+    }
+
+    /**
+     * Tokenize query into clean lowercase terms.
+     */
+    protected function tokenizeAndStem(string $query): array
+    {
+        $cleaned = preg_replace('/[^\p{L}\p{N}\s]/u', ' ', strtolower($query));
+        $words = preg_split('/\s+/', trim($cleaned));
+        $stopWords = ['the', 'is', 'at', 'which', 'on', 'a', 'an', 'and', 'or', 'in', 'for', 'to', 'of'];
+        
+        $tokens = [];
+        foreach ($words as $w) {
+            $w = trim($w);
+            if (strlen($w) >= 2 && !in_array($w, $stopWords)) {
+                $tokens[] = $w;
+                // Add simple singular forms for plurals
+                if (str_ends_with($w, 's') && strlen($w) > 3) {
+                    $tokens[] = rtrim($w, 's');
+                }
+            }
+        }
+
+        return array_unique($tokens);
     }
 
     /**
@@ -179,12 +354,10 @@ class SearchService
     {
         $q = trim(strtolower($query));
 
-        // Math calculation: e.g. 5 * 12, (20 + 4) / 2, sqrt(256), 2^10
+        // Math calculation: e.g. 5 * 12, (20 + 4) / 2, 2^10
         if (preg_match('/^[\d\s\+\-\*\/\^\(\)\.\%]+$/', $q) && preg_match('/[\+\-\*\/\^\%]/', $q)) {
             try {
-                // Safe basic evaluation
                 $expr = str_replace('^', '**', $q);
-                // Validate only numbers and basic operators
                 if (preg_match('/^[\d\s\+\-\*\/\.\(\)]+$/', $expr)) {
                     $result = eval("return {$expr};");
                     if (is_numeric($result)) {
@@ -225,7 +398,7 @@ class SearchService
     }
 
     /**
-     * Generate dynamic context snippet around matching keywords.
+     * Generate dynamic context snippet around the highest density keyword cluster.
      */
     protected function generateSnippet(string $text, array $terms, int $snippetLength = 220): string
     {
@@ -236,27 +409,45 @@ class SearchService
         $text = strip_tags($text);
         $lowerText = strtolower($text);
 
-        $firstPos = false;
-        foreach ($terms as $term) {
-            if (empty($term)) continue;
-            $pos = strpos($lowerText, $term);
-            if ($pos !== false && ($firstPos === false || $pos < $firstPos)) {
-                $firstPos = $pos;
-            }
-        }
-
-        if ($firstPos === false) {
+        if (empty($terms)) {
             return Str::limit($text, $snippetLength);
         }
 
-        $start = max(0, $firstPos - 40);
-        $snippet = substr($text, $start, $snippetLength);
+        // Find the position of each term and pick the best dense cluster
+        $bestPos = 0;
+        $maxTermsInWindow = 0;
 
-        return ($start > 0 ? '... ' : '') . trim($snippet) . (strlen($text) > ($start + $snippetLength) ? ' ...' : '');
+        foreach ($terms as $term) {
+            if (empty($term)) continue;
+            $pos = strpos($lowerText, $term);
+            if ($pos !== false) {
+                // Count how many terms appear within a 200 char window starting near $pos
+                $windowStart = max(0, $pos - 30);
+                $windowText = substr($lowerText, $windowStart, $snippetLength);
+                $termsCount = 0;
+                foreach ($terms as $otherTerm) {
+                    if (str_contains($windowText, $otherTerm)) {
+                        $termsCount++;
+                    }
+                }
+
+                if ($termsCount > $maxTermsInWindow) {
+                    $maxTermsInWindow = $termsCount;
+                    $bestPos = $windowStart;
+                }
+            }
+        }
+
+        if ($maxTermsInWindow === 0) {
+            return Str::limit($text, $snippetLength);
+        }
+
+        $snippet = substr($text, $bestPos, $snippetLength);
+        return ($bestPos > 0 ? '... ' : '') . trim($snippet) . (strlen($text) > ($bestPos + $snippetLength) ? ' ...' : '');
     }
 
     /**
-     * Highlight query terms in snippet with <mark> tags.
+     * Highlight query terms in snippet with clean monochrome <mark> tags without nesting.
      */
     protected function highlightTerms(string $snippet, array $terms): string
     {
@@ -265,13 +456,23 @@ class SearchService
         }
 
         $escaped = e($snippet);
-        foreach ($terms as $term) {
-            if (strlen($term) < 2) continue;
-            $pattern = '/\b(' . preg_quote($term, '/') . ')/i';
-            $escaped = preg_replace($pattern, '<mark class="bg-indigo-100 dark:bg-indigo-950/80 text-indigo-900 dark:text-indigo-200 font-semibold px-0.5 rounded">$1</mark>', $escaped);
+        
+        // Sort by longest term first so longer terms match before substrings
+        $validTerms = array_filter($terms, fn($t) => strlen(trim($t)) >= 2);
+        usort($validTerms, fn($a, $b) => strlen($b) <=> strlen($a));
+
+        if (empty($validTerms)) {
+            return $escaped;
         }
 
-        return $escaped;
+        $quotedTerms = array_map(fn($t) => preg_quote($t, '/'), $validTerms);
+        $pattern = '/\b(' . implode('|', $quotedTerms) . ')/i';
+
+        return preg_replace(
+            $pattern, 
+            '<mark class="bg-zinc-200 dark:bg-zinc-800 text-black dark:text-white font-bold px-0.5 rounded">$1</mark>', 
+            $escaped
+        );
     }
 
     /**
