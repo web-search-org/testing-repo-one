@@ -5,9 +5,12 @@ namespace App\Console\Commands;
 use App\Models\CrawlJob;
 use App\Models\Domain;
 use App\Models\Sitemap;
+use App\Models\WebImage;
 use App\Models\WebLink;
 use App\Models\WebPage;
 use App\Models\Word;
+use App\Services\FaviconService;
+use App\Services\ImageStorageService;
 use App\Services\RobotsTxtService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
@@ -34,13 +37,15 @@ class CrawlWorkerCommand extends Command
     protected $description = 'Process queued websites, respect robots.txt rules, auto-extract interlinks, build link graphs, and continuously crawl the web';
 
     protected RobotsTxtService $robots;
-    protected \App\Services\FaviconService $favicons;
+    protected FaviconService $favicons;
+    protected ImageStorageService $imageStorage;
 
-    public function __construct(RobotsTxtService $robots, \App\Services\FaviconService $favicons)
+    public function __construct(RobotsTxtService $robots, FaviconService $favicons, ImageStorageService $imageStorage)
     {
         parent::__construct();
         $this->robots = $robots;
         $this->favicons = $favicons;
+        $this->imageStorage = $imageStorage;
     }
 
     /**
@@ -264,6 +269,9 @@ class CrawlWorkerCommand extends Command
 
                         // Index content words into words dictionary
                         $this->indexWords($title, $bodyText, $keywords);
+
+                        // Extract, downscale, and store prominent web images
+                        $this->extractAndStoreImages($html, $url, $page->id, $domain->id, $pageDomain, $ogImage);
 
                         // Extract all outbound links
                         $links = $this->extractLinks($html, $url);
@@ -578,6 +586,67 @@ class CrawlWorkerCommand extends Command
             }
         } catch (\Exception) {
             // Ignore word indexing errors silently
+        }
+    }
+
+    protected function extractAndStoreImages(string $html, string $baseUrl, ?string $pageId, ?string $domainId, string $domain, ?string $ogImage = null): void
+    {
+        try {
+            $candidates = [];
+
+            if ($ogImage && filter_var($ogImage, FILTER_VALIDATE_URL)) {
+                $candidates[] = [
+                    'url' => $ogImage,
+                    'alt' => 'OpenGraph Preview',
+                    'title' => 'Page Image',
+                ];
+            }
+
+            preg_match_all('/<img\b[^>]*src=["\']([^"\']+)["\'][^>]*>/is', $html, $matches, PREG_SET_ORDER);
+
+            foreach ($matches as $imgMatch) {
+                $rawSrc = trim($imgMatch[1]);
+                if (empty($rawSrc) || str_starts_with($rawSrc, 'data:') || str_ends_with(strtolower($rawSrc), '.svg')) {
+                    continue;
+                }
+
+                $resolvedUrl = $this->resolveAbsoluteUrl($rawSrc, $baseUrl);
+                if (!$resolvedUrl) continue;
+
+                $alt = null;
+                if (preg_match('/alt=["\']([^"\']+)["\']/i', $imgMatch[0], $altMatch)) {
+                    $alt = trim(html_entity_decode(strip_tags($altMatch[1])));
+                }
+
+                $title = null;
+                if (preg_match('/title=["\']([^"\']+)["\']/i', $imgMatch[0], $titleMatch)) {
+                    $title = trim(html_entity_decode(strip_tags($titleMatch[1])));
+                }
+
+                $candidates[] = [
+                    'url' => $resolvedUrl,
+                    'alt' => $alt,
+                    'title' => $title,
+                ];
+
+                if (count($candidates) >= 6) {
+                    break;
+                }
+            }
+
+            foreach ($candidates as $cand) {
+                $this->imageStorage->downloadAndProcessImage(
+                    $cand['url'],
+                    $baseUrl,
+                    $pageId,
+                    $domainId,
+                    $domain,
+                    $cand['alt'],
+                    $cand['title']
+                );
+            }
+        } catch (\Exception) {
+            // Ignore image download errors silently
         }
     }
 }

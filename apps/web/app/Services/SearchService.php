@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\WebPage;
+use App\Models\WebImage;
 use App\Models\SearchQuery;
 use Illuminate\Support\Str;
 use Illuminate\Support\Collection;
@@ -14,9 +15,13 @@ class SearchService
      */
     public function search(array $params): array
     {
+        $category = $params['category'] ?? 'all';
+        if ($category === 'images') {
+            return $this->searchImages($params);
+        }
+
         $startTime = microtime(true);
         $rawQuery = trim($params['q'] ?? '');
-        $category = $params['category'] ?? 'all';
         $page = max(1, (int) ($params['page'] ?? 1));
         $perPage = min(50, max(5, (int) ($params['perPage'] ?? 10)));
         $language = $params['lang'] ?? null;
@@ -519,5 +524,108 @@ class SearchService
 
         $fallbackWords = ['opensource', 'technology', 'developer', 'software', 'search', 'privacy', 'laravel', 'framework', 'database', 'crawler', 'indexer', 'algorithm', 'svelte'];
         return $fallbackWords[array_rand($fallbackWords)];
+    }
+
+    /**
+     * Dedicated Image Search with visual metadata and downscaled thumbnails.
+     */
+    public function searchImages(array $params): array
+    {
+        $startTime = microtime(true);
+        $rawQuery = trim($params['q'] ?? '');
+        $page = max(1, (int) ($params['page'] ?? 1));
+        $perPage = min(60, max(6, (int) ($params['perPage'] ?? 24)));
+
+        if (empty($rawQuery)) {
+            return [
+                'query' => '',
+                'totalHits' => 0,
+                'page' => 1,
+                'perPage' => $perPage,
+                'totalPages' => 0,
+                'executionTimeMs' => 0,
+                'instantAnswer' => null,
+                'results' => [],
+                'imageResults' => [],
+                'suggestions' => [],
+                'correctedQuery' => null,
+            ];
+        }
+
+        $parsed = $this->parseQueryFilters($rawQuery);
+        $cleanQuery = $parsed['cleanQuery'];
+        $siteFilter = $parsed['site'];
+        $terms = $this->tokenizeAndStem($cleanQuery);
+
+        $queryBuilder = WebImage::query();
+
+        if ($siteFilter) {
+            $queryBuilder->where('domain', 'like', "%{$siteFilter}%");
+        }
+
+        if (!empty($terms)) {
+            $queryBuilder->where(function ($q) use ($terms, $cleanQuery) {
+                $q->where('alt_text', 'like', "%{$cleanQuery}%")
+                  ->orWhere('title', 'like', "%{$cleanQuery}%")
+                  ->orWhere('domain', 'like', "%{$cleanQuery}%")
+                  ->orWhere('page_url', 'like', "%{$cleanQuery}%")
+                  ->orWhereHas('webPage', function ($sub) use ($cleanQuery) {
+                      $sub->where('title', 'like', "%{$cleanQuery}%")
+                          ->orWhere('body_text', 'like', "%{$cleanQuery}%");
+                  });
+
+                foreach ($terms as $term) {
+                    $q->orWhere('alt_text', 'like', "%{$term}%")
+                      ->orWhere('title', 'like', "%{$term}%")
+                      ->orWhere('domain', 'like', "%{$term}%")
+                      ->orWhereHas('webPage', function ($sub) use ($term) {
+                          $sub->where('title', 'like', "%{$term}%")
+                              ->orWhere('keywords', 'like', "%{$term}%");
+                      });
+                }
+            });
+        }
+
+        $totalHits = $queryBuilder->count();
+        $totalPages = (int) ceil($totalHits / $perPage);
+        $offset = ($page - 1) * $perPage;
+
+        $items = $queryBuilder->orderByDesc('created_at')
+            ->skip($offset)
+            ->take($perPage)
+            ->get();
+
+        $imageResults = $items->map(function (WebImage $img) {
+            return [
+                'id' => $img->id,
+                'imageUrl' => $img->local_path ?: $img->image_url,
+                'originalUrl' => $img->image_url,
+                'thumbnailUrl' => $img->thumbnail_path ?: $img->local_path ?: $img->image_url,
+                'pageUrl' => $img->page_url,
+                'domain' => $img->domain,
+                'alt' => $img->alt_text ?: $img->title ?: $img->domain,
+                'title' => $img->title ?: $img->alt_text ?: $img->domain,
+                'width' => $img->width,
+                'height' => $img->height,
+                'aspectRatio' => $img->aspect_ratio,
+                'mimeType' => $img->mime_type,
+            ];
+        })->toArray();
+
+        $executionTimeMs = round((microtime(true) - $startTime) * 1000, 2);
+
+        return [
+            'query' => $rawQuery,
+            'totalHits' => $totalHits,
+            'page' => $page,
+            'perPage' => $perPage,
+            'totalPages' => $totalPages,
+            'executionTimeMs' => $executionTimeMs,
+            'instantAnswer' => null,
+            'results' => [],
+            'imageResults' => $imageResults,
+            'suggestions' => $this->getRelatedSuggestions($cleanQuery),
+            'correctedQuery' => null,
+        ];
     }
 }

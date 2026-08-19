@@ -375,4 +375,49 @@ class SearchEngineTest extends TestCase
         $response->assertStatus(200)
             ->assertHeader('X-Favicon-Source', 'database');
     }
+
+    public function test_image_search_and_web_images_indexing(): void
+    {
+        $domain = \App\Models\Domain::create(['name' => 'unsplash-mock.org']);
+        $page = \App\Models\WebPage::create([
+            'domain_id' => $domain->id,
+            'domain' => 'unsplash-mock.org',
+            'url' => 'https://unsplash-mock.org/photos/forest',
+            'title' => 'Deep Misty Forest Nature',
+            'body_text' => 'High resolution nature and trees photography',
+            'is_indexed' => true,
+        ]);
+
+        $image = \App\Models\WebImage::create([
+            'web_page_id' => $page->id,
+            'domain_id' => $domain->id,
+            'domain' => 'unsplash-mock.org',
+            'page_url' => $page->url,
+            'image_url' => 'https://unsplash-mock.org/images/forest.jpg',
+            'local_path' => '/storage/images/forest.webp',
+            'thumbnail_path' => '/storage/thumbnails/forest.webp',
+            'alt_text' => 'Green Misty Forest Trees',
+            'title' => 'Forest Wallpaper',
+            'width' => 800,
+            'height' => 600,
+            'mime_type' => 'image/webp',
+            'size_bytes' => 45000,
+            'aspect_ratio' => 1.33,
+        ]);
+
+        $this->assertTrue(Str::isUuid($image->id));
+
+        $response = $this->getJson('/api/v1/search?q=forest&category=images');
+        $response->assertStatus(200)
+            ->assertJsonStructure([
+                'query',
+                'totalHits',
+                'imageResults' => [
+                    '*' => ['id', 'imageUrl', 'thumbnailUrl', 'pageUrl', 'domain', 'alt', 'title', 'width', 'height'],
+                ],
+            ]);
+
+        $this->assertEquals(1, $response->json('totalHits'));
+        $this->assertEquals('Green Misty Forest Trees', $response->json('imageResults.0.alt'));
+    }
 }
