@@ -1,0 +1,16 @@
+{
+  "name": "@web-search/shared-types",
+  "version": "0.1.0",
+  "description": "Shared TypeScript types, data contracts, and schemas for Web-Search.org",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "module": "dist/index.mjs",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsc --watch"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

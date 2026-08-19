@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "websearch-indexer"
+version = "0.1.0"
+description = "Text processing, BM25 ranking, and PageRank engine for Web-Search.org"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.10.0",
+    "numpy>=1.26.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0"
+]

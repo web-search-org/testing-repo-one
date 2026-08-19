@@ -1,0 +1,19 @@
+{
+  "name": "@web-search/sdk",
+  "version": "0.1.0",
+  "description": "Official TypeScript/JavaScript Client SDK for Web-Search.org",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@web-search/shared-types": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

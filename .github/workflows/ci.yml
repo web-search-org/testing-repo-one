@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  lint-and-typecheck:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install Node Dependencies
+        run: pnpm install
+
+      - name: Typecheck TypeScript Packages
+        run: pnpm -r --if-present typecheck
+
+      - name: Build Web & Packages
+        run: pnpm build
+
+  laravel-tests:
+    name: Laravel Backend Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: 8.3
+          extensions: mbstring, xml, ctype, iconv, sqlite3, pdo_sqlite
+          coverage: none
+
+      - name: Install Composer Dependencies
+        working-directory: apps/web
+        run: composer install -q --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
+
+      - name: Prepare Environment
+        working-directory: apps/web
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          touch database/database.sqlite
+          php artisan migrate --seed
+
+      - name: Run Pest / PHPUnit Tests
+        working-directory: apps/web
+        run: php artisan test
+
+  python-crawler-tests:
+    name: Python Crawler Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Crawler Dependencies
+        working-directory: apps/crawler
+        run: |
+          pip install -r requirements.txt
+          pip install -e .
+
+      - name: Run Crawler Pytest
+        working-directory: apps/crawler
+        run: pytest -v

@@ -1,0 +1,24 @@
+{
+    "name": "websearch/sdk",
+    "description": "Official PHP SDK for Web-Search.org API",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Web-Search.org Contributors",
+            "email": "dev@web-search.org"
+        }
+    ],
+    "require": {
+        "php": ">=8.2",
+        "guzzlehttp/guzzle": "^7.8 || ^8.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0 || ^12.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "WebSearch\\Sdk\\": "src/"
+        }
+    }
+}

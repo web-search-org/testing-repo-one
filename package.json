@@ -1,0 +1,21 @@
+{
+  "name": "web-search-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Web-Search.org - Open-Source Privacy-First Search Engine Monorepo",
+  "scripts": {
+    "dev": "pnpm --filter @web-search/web dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r --if-present test",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "pnpm -r --if-present lint",
+    "crawler:dev": "python3 -m crawler run --seed https://news.ycombinator.com --max-pages 50",
+    "laravel:serve": "cd apps/web && php artisan serve",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "prettier": "^3.5.0",
+    "typescript": "^5.7.3"
+  }
+}
