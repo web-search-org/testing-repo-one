@@ -13,6 +13,7 @@ use App\Services\FaviconService;
 use App\Services\ImageStorageService;
 use App\Services\RobotsTxtService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
@@ -53,11 +54,18 @@ class CrawlWorkerCommand extends Command
      */
     public function handle(): int
     {
+        // Increase memory limit for long-running crawler worker & disable query logging
+        ini_set('memory_limit', '512M');
+        DB::connection()->disableQueryLog();
+        if (function_exists('gc_enable')) {
+            gc_enable();
+        }
+
         $once = $this->option('once');
         $poll = (int) $this->option('poll');
         $forceRecover = $this->option('recover');
 
-        $this->info("🚀 Web-Search Autonomous Crawler Worker active (robots.txt validation: ON).");
+        $this->info("🚀 Web-Search Autonomous Crawler Worker active (Memory optimized, robots.txt validation: ON).");
 
         // Recovery of stale or interrupted running jobs
         if ($forceRecover) {
@@ -103,6 +111,8 @@ class CrawlWorkerCommand extends Command
 
             if ($job) {
                 $this->processJob($job);
+                // Trigger garbage collection between jobs
+                gc_collect_cycles();
             } else {
                 if ($once) {
                     $this->info("No queued jobs remaining. Exiting.");
@@ -159,7 +169,7 @@ class CrawlWorkerCommand extends Command
         }
 
         $isSitemap = (bool) ($job->metadata['is_sitemap'] ?? str_ends_with(strtolower($seedUrl), '.xml'));
-        $maxPages = min((int) ($job->max_pages ?: 50), 200);
+        $maxPages = min((int) ($job->max_pages ?: 50), 100);
 
         $crawledCount = 0;
         $indexedCount = 0;
@@ -225,7 +235,11 @@ class CrawlWorkerCommand extends Command
                     $crawledCount++;
 
                     if ($response->successful()) {
-                        $html = $response->body();
+                        $rawBody = $response->body();
+                        // Truncate ultra-large HTML to prevent memory spikes
+                        $html = substr($rawBody, 0, 500000);
+                        unset($rawBody);
+
                         $title = $this->sanitizeUtf8($this->extractTitle($html) ?: $url);
                         $description = $this->sanitizeUtf8($this->extractMetaDescription($html));
                         $bodyText = $this->sanitizeUtf8($this->extractBodyText($html));
@@ -373,6 +387,9 @@ class CrawlWorkerCommand extends Command
                         ]);
 
                         $this->line("  ✓ Indexed: {$url} ({$durationMs}ms, {$outLinksCount} links extracted, PR: {$computedPageRank})");
+
+                        // Explicitly free memory variables after each page
+                        unset($html, $links, $title, $description, $bodyText, $keywords, $headings);
                     }
                 } catch (\Exception $e) {
                     $this->warn("  ✗ Skipped {$url} (timeout/network error: {$e->getMessage()})");
@@ -421,7 +438,9 @@ class CrawlWorkerCommand extends Command
     protected function extractLinks(string $html, string $baseUrl): array
     {
         $links = [];
-        preg_match_all('/<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)<\/a>/is', $html, $matches, PREG_SET_ORDER);
+        // Limit link extraction to first 300KB and max 80 links per page
+        $truncated = substr($html, 0, 300000);
+        preg_match_all('/<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)<\/a>/is', $truncated, $matches, PREG_SET_ORDER);
 
         foreach ($matches as $match) {
             $rawHref = trim($match[1]);
@@ -450,9 +469,14 @@ class CrawlWorkerCommand extends Command
                     'anchor' => substr($anchor ?: parse_url($absoluteUrl, PHP_URL_PATH) ?: 'Link', 0, 100),
                     'rel' => $rel,
                 ];
+
+                if (count($links) >= 80) {
+                    break;
+                }
             }
         }
 
+        unset($matches);
         return $links;
     }
 
@@ -602,7 +626,7 @@ class CrawlWorkerCommand extends Command
                 ];
             }
 
-            preg_match_all('/<img\b[^>]*src=["\']([^"\']+)["\'][^>]*>/is', $html, $matches, PREG_SET_ORDER);
+            preg_match_all('/<img\b[^>]*src=["\']([^"\']+)["\'][^>]*>/is', substr($html, 0, 200000), $matches, PREG_SET_ORDER);
 
             foreach ($matches as $imgMatch) {
                 $rawSrc = trim($imgMatch[1]);
@@ -629,10 +653,12 @@ class CrawlWorkerCommand extends Command
                     'title' => $title,
                 ];
 
-                if (count($candidates) >= 6) {
+                if (count($candidates) >= 4) {
                     break;
                 }
             }
+
+            unset($matches);
 
             foreach ($candidates as $cand) {
                 $this->imageStorage->downloadAndProcessImage(
