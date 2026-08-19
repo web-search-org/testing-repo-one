@@ -109,6 +109,32 @@ class ConsoleController extends Controller
     }
 
     /**
+     * Interlinking & Backlinks Report (Google Search Console Links report)
+     */
+    public function links(Request $request): Response
+    {
+        $domains = Domain::all();
+        $domainName = $request->input('domain');
+        $domain = $domainName ? Domain::where('name', $domainName)->first() : $domains->first();
+
+        $linksData = $domain ? $this->consoleService->getLinksReport($domain) : [
+            'domain' => '',
+            'summary' => ['totalExternalLinks' => 0, 'totalLinkingDomains' => 0, 'totalInternalLinks' => 0],
+            'topLinkingDomains' => [],
+            'topLinkedPages' => [],
+            'topAnchorTexts' => [],
+            'topInternalPages' => [],
+            'recentLinks' => [],
+        ];
+
+        return Inertia::render('Console/Links', [
+            'currentDomain' => $domain,
+            'links' => $linksData,
+            'domains' => $domains,
+        ]);
+    }
+
+    /**
      * Sitemaps View
      */
     public function sitemaps(Request $request): Response

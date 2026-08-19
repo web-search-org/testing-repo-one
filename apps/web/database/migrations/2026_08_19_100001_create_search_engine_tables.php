@@ -56,6 +56,20 @@ return new class extends Migration
             $table->timestamps();
         });
 
+        Schema::create('web_links', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->foreignUuid('source_page_id')->nullable()->constrained('web_pages')->cascadeOnDelete();
+            $table->string('source_url', 2048)->index();
+            $table->string('source_domain')->index();
+            $table->foreignUuid('target_page_id')->nullable()->constrained('web_pages')->nullOnDelete();
+            $table->string('target_url', 2048)->index();
+            $table->string('target_domain')->index();
+            $table->string('anchor_text')->nullable();
+            $table->boolean('is_external')->default(false)->index();
+            $table->string('rel')->nullable();
+            $table->timestamps();
+        });
+
         Schema::create('sitemaps', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->foreignUuid('domain_id')->constrained('domains')->cascadeOnDelete();
@@ -119,6 +133,7 @@ return new class extends Migration
         Schema::dropIfExists('crawl_jobs');
         Schema::dropIfExists('domain_performances');
         Schema::dropIfExists('sitemaps');
+        Schema::dropIfExists('web_links');
         Schema::dropIfExists('web_pages');
         Schema::dropIfExists('domains');
     }

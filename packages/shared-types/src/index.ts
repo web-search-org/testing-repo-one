@@ -164,6 +164,8 @@ export interface UrlInspectionResult {
     mobileFriendly: boolean;
     https: boolean;
     pageRank?: number;
+    inLinksCount?: number;
+    outLinksCount?: number;
     wordCount?: number;
   };
   metadata?: {
@@ -176,6 +178,12 @@ export interface UrlInspectionResult {
     category?: string;
     language?: string;
   } | null;
+  inboundLinks?: Array<{
+    source_url: string;
+    source_domain: string;
+    anchor_text?: string;
+    is_external: boolean;
+  }>;
 }
 
 export interface PerformanceMetrics {
@@ -201,6 +209,44 @@ export interface PerformanceMetrics {
     impressions: number;
     ctr: number;
     position: number;
+  }>;
+}
+
+export interface LinksReport {
+  domain: string;
+  summary: {
+    totalExternalLinks: number;
+    totalLinkingDomains: number;
+    totalInternalLinks: number;
+  };
+  topLinkingDomains: Array<{
+    domain: string;
+    linkCount: number;
+    targetPagesCount: number;
+  }>;
+  topLinkedPages: Array<{
+    url: string;
+    incomingLinks: number;
+    linkingDomainsCount: number;
+  }>;
+  topAnchorTexts: Array<{
+    text: string;
+    count: number;
+  }>;
+  topInternalPages: Array<{
+    url: string;
+    internalLinks: number;
+  }>;
+  recentLinks: Array<{
+    id: UUID;
+    source_url: string;
+    source_domain: string;
+    target_url: string;
+    target_domain: string;
+    anchor_text?: string;
+    is_external: boolean;
+    rel?: string;
+    created_at: string;
   }>;
 }
 

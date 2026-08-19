@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\CrawlJob;
 use App\Models\Domain;
 use App\Models\Sitemap;
+use App\Models\WebLink;
 use App\Models\WebPage;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
@@ -20,14 +21,15 @@ class CrawlWorkerCommand extends Command
     protected $signature = 'crawl:worker 
                             {--once : Process pending jobs once and exit}
                             {--poll=2 : Seconds to wait between polling for new queued jobs}
-                            {--limit=10 : Maximum pages to crawl per job}';
+                            {--auto-queue-external : Automatically queue new external domains discovered}
+                            {--limit=25 : Maximum pages to crawl per job}';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = 'Process and crawl queued websites and sitemaps in the background';
+    protected $description = 'Process and crawl queued websites, extract interlinks, build link graphs, and auto-discover URLs';
 
     /**
      * Execute the console command.
@@ -36,8 +38,9 @@ class CrawlWorkerCommand extends Command
     {
         $once = $this->option('once');
         $poll = (int) $this->option('poll');
+        $autoQueueExternal = (bool) $this->option('auto-queue-external');
 
-        $this->info("🚀 Web-Search Crawler Worker active. Waiting for queued jobs...");
+        $this->info("🚀 Web-Search Crawler Worker active (Automatic Interlink Discovery Enabled).");
 
         do {
             $job = CrawlJob::where('status', 'queued')
@@ -45,7 +48,7 @@ class CrawlWorkerCommand extends Command
                 ->first();
 
             if ($job) {
-                $this->processJob($job);
+                $this->processJob($job, $autoQueueExternal);
             } else {
                 if ($once) {
                     $this->info("No queued jobs remaining. Exiting.");
@@ -58,7 +61,7 @@ class CrawlWorkerCommand extends Command
         return Command::SUCCESS;
     }
 
-    protected function processJob(CrawlJob $job): void
+    protected function processJob(CrawlJob $job, bool $autoQueueExternal = false): void
     {
         $this->info("⚡ Processing Job {$job->id}: {$job->seed_url}");
         $job->update([
@@ -68,11 +71,11 @@ class CrawlWorkerCommand extends Command
 
         $seedUrl = $job->seed_url;
         $parsed = parse_url($seedUrl);
-        $domainName = strtolower($parsed['host'] ?? $seedUrl);
+        $seedDomain = strtolower($parsed['host'] ?? $seedUrl);
         $scheme = $parsed['scheme'] ?? 'https';
 
         $domain = Domain::firstOrCreate(
-            ['name' => $domainName],
+            ['name' => $seedDomain],
             [
                 'protocol' => $scheme,
                 'verification_token' => 'web-search-site-verification=' . Str::random(32),
@@ -83,30 +86,40 @@ class CrawlWorkerCommand extends Command
         $domain->update(['crawl_status' => 'crawling']);
 
         $isSitemap = (bool) ($job->metadata['is_sitemap'] ?? str_ends_with(strtolower($seedUrl), '.xml'));
-        $maxPages = min((int) ($job->max_pages ?: 20), 100);
+        $maxPages = min((int) ($job->max_pages ?: 50), 200);
 
         $crawledCount = 0;
         $indexedCount = 0;
-        $discoveredUrls = [$seedUrl];
+        $frontier = [$seedUrl];
+        $visited = [];
+        $discoveredExternalDomains = [];
 
         try {
             if ($isSitemap) {
-                // Fetch and parse XML sitemap
                 $res = Http::timeout(10)->get($seedUrl);
                 if ($res->successful()) {
                     $xmlContent = $res->body();
                     preg_match_all('/<loc>(https?:\/\/[^<]+)<\/loc>/i', $xmlContent, $matches);
-                    $discoveredUrls = array_unique(array_slice($matches[1] ?? [$seedUrl], 0, $maxPages));
+                    $frontier = array_unique(array_slice($matches[1] ?? [$seedUrl], 0, $maxPages));
                 }
             }
 
-            foreach ($discoveredUrls as $url) {
-                if ($crawledCount >= $maxPages) break;
+            while (!empty($frontier) && $crawledCount < $maxPages) {
+                $url = array_shift($frontier);
+                $url = $this->normalizeUrl($url);
+
+                if (!$url || in_array($url, $visited)) {
+                    continue;
+                }
+                $visited[] = $url;
 
                 $start = microtime(true);
                 try {
                     $response = Http::timeout(8)
-                        ->withHeaders(['User-Agent' => 'WebSearchBot/1.0 (+https://web-search.org/bot.html)'])
+                        ->withHeaders([
+                            'User-Agent' => 'WebSearchBot/1.0 (+https://web-search.org/bot.html)',
+                            'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                        ])
                         ->get($url);
                     
                     $durationMs = round((microtime(true) - $start) * 1000, 2);
@@ -119,37 +132,125 @@ class CrawlWorkerCommand extends Command
                         $bodyText = $this->extractBodyText($html);
                         $keywords = $this->extractKeywords($title, $bodyText);
                         $headings = $this->extractHeadings($html);
+                        $ogImage = $this->extractOgImage($html);
+                        $favicon = $this->extractFavicon($html, $url);
 
-                        WebPage::updateOrCreate(
+                        $pageDomain = parse_url($url, PHP_URL_HOST) ?: $seedDomain;
+                        $pageDomain = strtolower($pageDomain);
+
+                        $page = WebPage::updateOrCreate(
                             ['url' => $url],
                             [
                                 'domain_id' => $domain->id,
-                                'domain' => $domainName,
+                                'domain' => $pageDomain,
                                 'title' => $title,
                                 'description' => $description,
                                 'body_text' => $bodyText,
                                 'keywords' => $keywords,
                                 'headings' => $headings,
+                                'og_image' => $ogImage,
+                                'favicon_url' => $favicon,
                                 'category' => $job->metadata['category'] ?? 'all',
                                 'http_status' => $response->status(),
                                 'response_time_ms' => $durationMs,
                                 'is_indexed' => true,
                                 'index_status' => 'indexed',
                                 'mobile_friendly' => true,
-                                'page_rank' => 5.0,
                                 'crawled_at' => now(),
                             ]
                         );
                         $indexedCount++;
-                        $this->line("  ✓ Indexed: {$url} ({$durationMs}ms)");
+
+                        // Extract and record all outbound links and interlinks
+                        $links = $this->extractLinks($html, $url);
+                        $outLinksCount = 0;
+
+                        foreach ($links as $linkData) {
+                            $targetUrl = $linkData['url'];
+                            $targetParsed = parse_url($targetUrl);
+                            $targetDomain = strtolower($targetParsed['host'] ?? '');
+                            $isExternal = ($targetDomain !== $pageDomain && !empty($targetDomain));
+
+                            if (empty($targetDomain)) continue;
+
+                            $outLinksCount++;
+
+                            // Save link graph connection
+                            WebLink::updateOrCreate(
+                                [
+                                    'source_url' => $url,
+                                    'target_url' => $targetUrl,
+                                ],
+                                [
+                                    'source_page_id' => $page->id,
+                                    'source_domain' => $pageDomain,
+                                    'target_domain' => $targetDomain,
+                                    'anchor_text' => $linkData['anchor'],
+                                    'is_external' => $isExternal,
+                                    'rel' => $linkData['rel'],
+                                ]
+                            );
+
+                            // Queue internal link into frontier
+                            if (!$isExternal && !in_array($targetUrl, $visited) && count($frontier) < ($maxPages * 2)) {
+                                $frontier[] = $targetUrl;
+                            }
+
+                            // Auto-register external domain for future crawls
+                            if ($isExternal && !in_array($targetDomain, $discoveredExternalDomains)) {
+                                $discoveredExternalDomains[] = $targetDomain;
+                                Domain::firstOrCreate(
+                                    ['name' => $targetDomain],
+                                    [
+                                        'protocol' => $targetParsed['scheme'] ?? 'https',
+                                        'verification_token' => 'web-search-site-verification=' . Str::random(32),
+                                        'is_verified' => false,
+                                        'crawl_status' => 'idle',
+                                    ]
+                                );
+
+                                if ($autoQueueExternal) {
+                                    CrawlJob::firstOrCreate(
+                                        ['seed_url' => "https://{$targetDomain}"],
+                                        [
+                                            'status' => 'queued',
+                                            'max_depth' => 2,
+                                            'max_pages' => 25,
+                                            'concurrency' => 2,
+                                            'metadata' => [
+                                                'source' => 'link_graph_discovery',
+                                                'referred_by' => $url,
+                                            ],
+                                        ]
+                                    );
+                                }
+                            }
+                        }
+
+                        // Update in-links count, out-links count and PageRank
+                        $inLinksCount = WebLink::where('target_url', $url)->count();
+                        $computedPageRank = round(min(10.0, 1.0 + ($inLinksCount * 0.5)), 1);
+
+                        $page->update([
+                            'out_links_count' => $outLinksCount,
+                            'in_links_count' => $inLinksCount,
+                            'page_rank' => $computedPageRank,
+                        ]);
+
+                        $this->line("  ✓ Indexed: {$url} ({$durationMs}ms, {$outLinksCount} links found, PR: {$computedPageRank})");
                     }
                 } catch (\Exception $e) {
                     $this->warn("  ✗ Failed to fetch {$url}: {$e->getMessage()}");
                 }
             }
 
+            // Recalculate domain totals and domain rank based on total inbound backlinks
+            $domainInLinks = WebLink::where('target_domain', $seedDomain)->where('is_external', true)->count();
+            $domainRank = round(min(10.0, 1.0 + ($domainInLinks * 0.4)), 1);
+
             $domain->update([
                 'total_pages' => WebPage::where('domain_id', $domain->id)->count(),
+                'domain_rank' => $domainRank,
                 'crawl_status' => 'idle',
                 'last_crawled_at' => now(),
             ]);
@@ -157,12 +258,12 @@ class CrawlWorkerCommand extends Command
             $job->update([
                 'status' => 'completed',
                 'pages_crawled' => $crawledCount,
-                'pages_discovered' => count($discoveredUrls),
+                'pages_discovered' => count($visited) + count($frontier),
                 'pages_indexed' => $indexedCount,
                 'finished_at' => now(),
             ]);
 
-            $this->info("✅ Job {$job->id} completed. Crawled {$crawledCount}, Indexed {$indexedCount} pages.");
+            $this->info("✅ Job {$job->id} completed. Crawled {$crawledCount}, Indexed {$indexedCount} pages. Discovered " . count($discoveredExternalDomains) . " external domains.");
         } catch (\Exception $e) {
             $domain->update(['crawl_status' => 'idle']);
             $job->update([
@@ -172,6 +273,94 @@ class CrawlWorkerCommand extends Command
             ]);
             $this->error("❌ Job {$job->id} failed: {$e->getMessage()}");
         }
+    }
+
+    protected function extractLinks(string $html, string $baseUrl): array
+    {
+        $links = [];
+        preg_match_all('/<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)<\/a>/is', $html, $matches, PREG_SET_ORDER);
+
+        foreach ($matches as $match) {
+            $rawHref = trim($match[1]);
+            $anchor = trim(html_entity_decode(strip_tags($match[2])));
+            
+            // Skip non-HTTP links
+            if (empty($rawHref) || preg_match('/^(javascript|mailto|tel|data|#):/i', $rawHref) || str_starts_with($rawHref, '#')) {
+                continue;
+            }
+
+            // Skip binary asset extensions
+            if (preg_match('/\.(png|jpe?g|gif|webp|svg|pdf|zip|tar|gz|mp4|mp3|exe|dmg|iso)$/i', parse_url($rawHref, PHP_URL_PATH) ?? '')) {
+                continue;
+            }
+
+            $absoluteUrl = $this->resolveAbsoluteUrl($rawHref, $baseUrl);
+            if ($absoluteUrl) {
+                // Extract rel if present
+                $rel = null;
+                if (preg_match('/rel=["\']([^"\']+)["\']/i', $match[0], $relMatch)) {
+                    $rel = trim($relMatch[1]);
+                }
+
+                $links[] = [
+                    'url' => $absoluteUrl,
+                    'anchor' => substr($anchor ?: parse_url($absoluteUrl, PHP_URL_PATH) ?: 'Link', 0, 100),
+                    'rel' => $rel,
+                ];
+            }
+        }
+
+        return $links;
+    }
+
+    protected function resolveAbsoluteUrl(string $href, string $baseUrl): ?string
+    {
+        if (str_starts_with($href, 'http://') || str_starts_with($href, 'https://')) {
+            return $this->normalizeUrl($href);
+        }
+
+        if (str_starts_with($href, '//')) {
+            $scheme = parse_url($baseUrl, PHP_URL_SCHEME) ?: 'https';
+            return $this->normalizeUrl("{$scheme}:{$href}");
+        }
+
+        $baseParsed = parse_url($baseUrl);
+        $scheme = $baseParsed['scheme'] ?? 'https';
+        $host = $baseParsed['host'] ?? '';
+        $port = isset($baseParsed['port']) ? ":{$baseParsed['port']}" : '';
+
+        if (empty($host)) return null;
+
+        if (str_starts_with($href, '/')) {
+            return $this->normalizeUrl("{$scheme}://{$host}{$port}{$href}");
+        }
+
+        $basePath = $baseParsed['path'] ?? '/';
+        $baseDir = rtrim(dirname($basePath), '/');
+        $resolved = $baseDir . '/' . $href;
+        return $this->normalizeUrl("{$scheme}://{$host}{$port}/" . ltrim($resolved, '/'));
+    }
+
+    protected function normalizeUrl(string $url): ?string
+    {
+        $parsed = parse_url(trim($url));
+        if (empty($parsed['scheme']) || empty($parsed['host'])) {
+            return null;
+        }
+
+        $scheme = strtolower($parsed['scheme']);
+        if (!in_array($scheme, ['http', 'https'])) {
+            return null;
+        }
+
+        $host = strtolower($parsed['host']);
+        $port = isset($parsed['port']) && !(($scheme === 'http' && $parsed['port'] == 80) || ($scheme === 'https' && $parsed['port'] == 443)) ? ":{$parsed['port']}" : '';
+        $path = $parsed['path'] ?? '/';
+        if ($path === '') $path = '/';
+        
+        $query = isset($parsed['query']) ? "?{$parsed['query']}" : '';
+
+        return "{$scheme}://{$host}{$port}{$path}{$query}";
     }
 
     protected function extractTitle(string $html): ?string
@@ -203,6 +392,23 @@ class CrawlWorkerCommand extends Command
     {
         preg_match_all('/<h[1-3][^>]*>(.*?)<\/h[1-3]>/is', $html, $matches);
         return array_slice(array_map('trim', array_map('strip_tags', $matches[1] ?? [])), 0, 6);
+    }
+
+    protected function extractOgImage(string $html): ?string
+    {
+        if (preg_match('/<meta[^>]*property=["\']og:image["\'][^>]*content=["\'](.*?)["\']/is', $html, $matches)) {
+            return trim($matches[1]);
+        }
+        return null;
+    }
+
+    protected function extractFavicon(string $html, string $url): ?string
+    {
+        if (preg_match('/<link[^>]*rel=["\'](?:shortcut )?icon["\'][^>]*href=["\'](.*?)["\']/is', $html, $matches)) {
+            return $this->resolveAbsoluteUrl(trim($matches[1]), $url);
+        }
+        $parsed = parse_url($url);
+        return ($parsed['scheme'] ?? 'https') . '://' . ($parsed['host'] ?? '') . '/favicon.ico';
     }
 
     protected function extractKeywords(string $title, string $body): array

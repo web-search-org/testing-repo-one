@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Domain;
+use App\Models\WebLink;
 use App\Models\WebPage;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -93,6 +94,81 @@ class SearchEngineTest extends TestCase
 
         $this->assertTrue(Str::isUuid($page->id));
         $this->assertEquals($domain->id, $page->domain_id);
+    }
+
+    public function test_web_links_and_interlinking_relationships(): void
+    {
+        $sourceDomain = Domain::create(['name' => 'github.com']);
+        $targetDomain = Domain::create(['name' => 'web-search.org']);
+
+        $sourcePage = WebPage::create([
+            'domain_id' => $sourceDomain->id,
+            'url' => 'https://github.com/web-search-org/search',
+            'domain' => 'github.com',
+            'title' => 'Web-Search GitHub Repository',
+            'is_indexed' => true,
+        ]);
+
+        $targetPage = WebPage::create([
+            'domain_id' => $targetDomain->id,
+            'url' => 'https://web-search.org',
+            'domain' => 'web-search.org',
+            'title' => 'Web-Search Home',
+            'is_indexed' => true,
+        ]);
+
+        $link = WebLink::create([
+            'source_page_id' => $sourcePage->id,
+            'source_url' => $sourcePage->url,
+            'source_domain' => 'github.com',
+            'target_page_id' => $targetPage->id,
+            'target_url' => $targetPage->url,
+            'target_domain' => 'web-search.org',
+            'anchor_text' => 'Official Search Engine',
+            'is_external' => true,
+        ]);
+
+        $this->assertTrue(Str::isUuid($link->id));
+        $this->assertTrue($link->is_external);
+        $this->assertEquals('Official Search Engine', $link->anchor_text);
+    }
+
+    public function test_search_console_links_api_endpoint(): void
+    {
+        $domain = Domain::create(['name' => 'laravel.com']);
+        $targetPage = WebPage::create([
+            'domain_id' => $domain->id,
+            'url' => 'https://laravel.com/docs',
+            'domain' => 'laravel.com',
+            'title' => 'Laravel Docs',
+            'is_indexed' => true,
+        ]);
+
+        WebLink::create([
+            'source_url' => 'https://news.ycombinator.com/item?id=123',
+            'source_domain' => 'news.ycombinator.com',
+            'target_page_id' => $targetPage->id,
+            'target_url' => 'https://laravel.com/docs',
+            'target_domain' => 'laravel.com',
+            'anchor_text' => 'Laravel Documentation',
+            'is_external' => true,
+        ]);
+
+        $response = $this->getJson('/api/v1/console/links?domain=laravel.com');
+
+        $response->assertStatus(200)
+            ->assertJsonStructure([
+                'domain',
+                'summary' => ['totalExternalLinks', 'totalLinkingDomains', 'totalInternalLinks'],
+                'topLinkingDomains',
+                'topLinkedPages',
+                'topAnchorTexts',
+                'topInternalPages',
+                'recentLinks',
+            ]);
+
+        $this->assertEquals(1, $response->json('summary.totalExternalLinks'));
+        $this->assertEquals('news.ycombinator.com', $response->json('topLinkingDomains.0.domain'));
     }
 
     public function test_search_api_endpoint_returns_json_results_with_uuids(): void

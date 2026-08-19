@@ -102,6 +102,14 @@ class Client
     }
 
     /**
+     * Search Console: Get links & interlinking report
+     */
+    public function getLinksReport(string $domain): array
+    {
+        return $this->request('GET', '/api/v1/console/links', ['query' => ['domain' => $domain]]);
+    }
+
+    /**
      * Get engine statistics
      */
     public function getStats(): array

@@ -7,6 +7,7 @@ import type {
   EngineStats,
   UrlInspectionResult,
   PerformanceMetrics,
+  LinksReport,
 } from '@web-search/shared-types';
 
 export interface SubmitSiteRequest {
@@ -168,6 +169,13 @@ export class WebSearchClient {
    */
   public async getPerformance(domain: string, period: string = '28d'): Promise<PerformanceMetrics> {
     return this.request<PerformanceMetrics>(`/api/v1/console/performance?domain=${encodeURIComponent(domain)}&period=${encodeURIComponent(period)}`);
+  }
+
+  /**
+   * Search Console: Retrieve links & interlinking report
+   */
+  public async getLinksReport(domain: string): Promise<LinksReport> {
+    return this.request<LinksReport>(`/api/v1/console/links?domain=${encodeURIComponent(domain)}`);
   }
 
   /**

@@ -51,6 +51,22 @@ class ConsoleApiController extends Controller
     }
 
     /**
+     * Get Interlinking & Backlinks Report: GET /api/v1/console/links?domain=example.com
+     */
+    public function links(Request $request): JsonResponse
+    {
+        $domainName = $request->input('domain', 'web-search.org');
+        $domain = Domain::where('name', $domainName)->first();
+
+        if (!$domain) {
+            return response()->json(['message' => 'Domain property not found'], 404);
+        }
+
+        $links = $this->consoleService->getLinksReport($domain);
+        return response()->json($links);
+    }
+
+    /**
      * Verify Domain: POST /api/v1/console/verify-domain
      */
     public function verifyDomain(Request $request): JsonResponse

@@ -24,6 +24,7 @@ Route::prefix('console')->name('console.')->group(function () {
     Route::get('/inspect', [ConsoleController::class, 'inspect'])->name('inspect');
     Route::post('/inspect/request-indexing', [ConsoleController::class, 'requestIndexing'])->name('inspect.request');
     Route::get('/performance', [ConsoleController::class, 'performance'])->name('performance');
+    Route::get('/links', [ConsoleController::class, 'links'])->name('links');
     Route::get('/sitemaps', [ConsoleController::class, 'sitemaps'])->name('sitemaps');
     Route::post('/sitemaps', [ConsoleController::class, 'submitSitemap'])->name('sitemaps.submit');
     Route::post('/verify', [ConsoleController::class, 'verifyDomain'])->name('verify');

@@ -5,8 +5,10 @@ namespace App\Services;
 use App\Models\Domain;
 use App\Models\DomainPerformance;
 use App\Models\Sitemap;
+use App\Models\WebLink;
 use App\Models\WebPage;
 use App\Models\CrawlJob;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Http;
 
@@ -126,10 +128,16 @@ class SearchConsoleService
                     'breadcrumbs' => true,
                 ],
                 'metadata' => null,
+                'inboundLinks' => [],
             ];
         }
 
         $page->update(['last_inspected_at' => now()]);
+
+        $inboundLinks = WebLink::where('target_url', $page->url)
+            ->limit(10)
+            ->get(['source_url', 'source_domain', 'anchor_text', 'is_external'])
+            ->toArray();
 
         return [
             'id' => $page->id,
@@ -142,7 +150,7 @@ class SearchConsoleService
                 ? 'This URL is indexed and appears in search engine results.' 
                 : 'This URL was crawled but is currently excluded from the active search index.',
             'coverage' => [
-                'discovery' => 'Sitemaps & Inbound links (' . ($page->in_links_count ?: 0) . ' referring pages)',
+                'discovery' => 'Sitemaps & Inbound links (' . ($page->in_links_count ?: count($inboundLinks)) . ' referring pages)',
                 'crawlTime' => $page->crawled_at?->toIso8601String() ?: $page->updated_at->toIso8601String(),
                 'crawledAs' => 'WebSearchBot/1.0 (+https://web-search.org/bot.html)',
                 'crawlAllowed' => 'Yes (robots.txt allows)',
@@ -155,6 +163,8 @@ class SearchConsoleService
                 'mobileFriendly' => (bool) $page->mobile_friendly,
                 'https' => str_starts_with($page->url, 'https'),
                 'pageRank' => (float) $page->page_rank,
+                'inLinksCount' => (int) $page->in_links_count,
+                'outLinksCount' => (int) $page->out_links_count,
                 'wordCount' => str_word_count($page->body_text ?? ''),
             ],
             'metadata' => [
@@ -167,6 +177,7 @@ class SearchConsoleService
                 'category' => $page->category,
                 'language' => $page->language,
             ],
+            'inboundLinks' => $inboundLinks,
         ];
     }
 
@@ -248,6 +259,112 @@ class SearchConsoleService
             ],
             'queries' => $topQueries,
             'pages' => $topPages,
+        ];
+    }
+
+    /**
+     * Get Complete Interlinking & Backlinks Report (Google Search Console "Links" report).
+     */
+    public function getLinksReport(Domain $domain): array
+    {
+        $domainName = $domain->name;
+
+        // External Backlinks pointing to this domain
+        $externalLinksQuery = WebLink::where('target_domain', $domainName)
+            ->where('is_external', true);
+
+        $totalExternalLinks = (int) $externalLinksQuery->count();
+
+        // Top Linking Websites / Domains (who links to this site)
+        $topLinkingDomains = WebLink::where('target_domain', $domainName)
+            ->where('is_external', true)
+            ->select('source_domain', DB::raw('count(*) as link_count'), DB::raw('count(distinct target_url) as target_pages_count'))
+            ->groupBy('source_domain')
+            ->orderByDesc('link_count')
+            ->limit(15)
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'domain' => $item->source_domain,
+                    'linkCount' => (int) $item->link_count,
+                    'targetPagesCount' => (int) $item->target_pages_count,
+                ];
+            })->toArray();
+
+        // Top Linked Pages (which pages on this domain receive the most external links)
+        $topLinkedPages = WebLink::where('target_domain', $domainName)
+            ->where('is_external', true)
+            ->select('target_url', DB::raw('count(*) as incoming_links'), DB::raw('count(distinct source_domain) as linking_domains_count'))
+            ->groupBy('target_url')
+            ->orderByDesc('incoming_links')
+            ->limit(15)
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'url' => $item->target_url,
+                    'incomingLinks' => (int) $item->incoming_links,
+                    'linkingDomainsCount' => (int) $item->linking_domains_count,
+                ];
+            })->toArray();
+
+        // Top Linking Text / Anchor Text
+        $topAnchorTexts = WebLink::where('target_domain', $domainName)
+            ->whereNotNull('anchor_text')
+            ->where('anchor_text', '!=', '')
+            ->select('anchor_text', DB::raw('count(*) as count'))
+            ->groupBy('anchor_text')
+            ->orderByDesc('count')
+            ->limit(12)
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'text' => $item->anchor_text,
+                    'count' => (int) $item->count,
+                ];
+            })->toArray();
+
+        // Internal Links (Links between pages on the same domain)
+        $internalLinksQuery = WebLink::where('source_domain', $domainName)
+            ->where('target_domain', $domainName);
+
+        $totalInternalLinks = (int) $internalLinksQuery->count();
+
+        $topInternalPages = WebLink::where('source_domain', $domainName)
+            ->where('target_domain', $domainName)
+            ->select('target_url', DB::raw('count(*) as internal_links'))
+            ->groupBy('target_url')
+            ->orderByDesc('internal_links')
+            ->limit(15)
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'url' => $item->target_url,
+                    'internalLinks' => (int) $item->internal_links,
+                ];
+            })->toArray();
+
+        // Detailed Link Explorer (Last 30 discovered links)
+        $recentLinks = WebLink::where(function ($q) use ($domainName) {
+                $q->where('source_domain', $domainName)
+                  ->orWhere('target_domain', $domainName);
+            })
+            ->orderByDesc('created_at')
+            ->limit(30)
+            ->get(['id', 'source_url', 'source_domain', 'target_url', 'target_domain', 'anchor_text', 'is_external', 'rel', 'created_at'])
+            ->toArray();
+
+        return [
+            'domain' => $domainName,
+            'summary' => [
+                'totalExternalLinks' => $totalExternalLinks,
+                'totalLinkingDomains' => count($topLinkingDomains),
+                'totalInternalLinks' => $totalInternalLinks,
+            ],
+            'topLinkingDomains' => $topLinkingDomains,
+            'topLinkedPages' => $topLinkedPages,
+            'topAnchorTexts' => $topAnchorTexts,
+            'topInternalPages' => $topInternalPages,
+            'recentLinks' => $recentLinks,
         ];
     }
 

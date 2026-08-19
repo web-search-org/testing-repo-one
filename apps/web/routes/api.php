@@ -21,6 +21,7 @@ Route::prefix('v1')->group(function () {
     Route::get('/console/inspect', [ConsoleApiController::class, 'inspect'])->name('api.v1.console.inspect');
     Route::post('/console/request-indexing', [ConsoleApiController::class, 'requestIndexing'])->name('api.v1.console.request_indexing');
     Route::get('/console/performance', [ConsoleApiController::class, 'performance'])->name('api.v1.console.performance');
+    Route::get('/console/links', [ConsoleApiController::class, 'links'])->name('api.v1.console.links');
     Route::post('/console/verify-domain', [ConsoleApiController::class, 'verifyDomain'])->name('api.v1.console.verify_domain');
 
     // Stats & System Health

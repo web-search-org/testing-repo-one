@@ -109,6 +109,12 @@
             >
                 Performance
             </Link>
+            <Link
+                href={`/console/links${inspection?.domain ? `?domain=${inspection.domain}` : ''}`}
+                class="px-3 py-1 rounded-md text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
+            >
+                Links & Interlinking
+            </Link>
             <span class="px-3 py-1 rounded-md text-xs font-semibold bg-indigo-600 text-white">
                 URL Inspection
             </span>
