@@ -1,14 +1,15 @@
 <script>
     import { onMount } from 'svelte';
-    import { Search, X, ArrowUpRight } from 'lucide-svelte';
+    import { Search, X, ArrowUpRight, Shuffle } from 'lucide-svelte';
 
-    let { initialQuery = '', size = 'large' } = $props();
+    let { initialQuery = '', size = 'large', showRandom = true } = $props();
 
     let query = $state('');
     let suggestions = $state([]);
     let showSuggestions = $state(false);
     let selectedIndex = $state(-1);
     let inputEl = $state(null);
+    let isRandomLoading = $state(false);
     let debounceTimer = null;
 
     $effect(() => {
@@ -75,6 +76,24 @@
         showSuggestions = false;
         inputEl?.focus();
     }
+
+    async function handleRandom(e) {
+        e.preventDefault();
+        isRandomLoading = true;
+        try {
+            const res = await fetch('/random-word');
+            const data = await res.json();
+            if (data.word) {
+                window.location.href = `/search?q=${encodeURIComponent(data.word)}`;
+            } else {
+                window.location.href = '/search/random';
+            }
+        } catch {
+            window.location.href = '/search/random';
+        } finally {
+            isRandomLoading = false;
+        }
+    }
 </script>
 
 <div class="relative w-full">
@@ -94,10 +113,10 @@
             onblur={() => setTimeout(() => showSuggestions = false, 200)}
             placeholder="Search the open web..."
             autocomplete="off"
-            class="w-full rounded-xl bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-800 text-black dark:text-white focus:outline-none focus:ring-1 focus:ring-black dark:focus:ring-white focus:border-black dark:focus:border-white transition-colors placeholder:text-zinc-400 dark:placeholder:text-zinc-600 {size === 'large' ? 'py-3.5 pl-12 pr-24 text-base shadow-xs' : 'py-2 pl-10 pr-16 text-xs'}"
+            class="w-full rounded-xl bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-800 text-black dark:text-white focus:outline-none focus:ring-1 focus:ring-black dark:focus:ring-white focus:border-black dark:focus:border-white transition-colors placeholder:text-zinc-400 dark:placeholder:text-zinc-600 {size === 'large' ? 'py-3.5 pl-12 pr-44 text-base shadow-xs' : 'py-2 pl-10 pr-32 text-xs'}"
         />
 
-        <div class="absolute right-2 flex items-center gap-1">
+        <div class="absolute right-2 flex items-center gap-1.5">
             {#if query}
                 <button
                     type="button"
@@ -108,6 +127,20 @@
                     <X class="w-4 h-4" />
                 </button>
             {/if}
+
+            {#if showRandom}
+                <button
+                    type="button"
+                    onclick={handleRandom}
+                    disabled={isRandomLoading}
+                    title="Search a random word from the words table"
+                    class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 hover:text-black dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-zinc-800 font-medium text-xs transition-colors cursor-pointer disabled:opacity-50"
+                >
+                    <Shuffle class="w-3.5 h-3.5 {isRandomLoading ? 'animate-spin' : ''}" />
+                    <span class="hidden sm:inline">Random</span>
+                </button>
+            {/if}
+
             <button
                 type="submit"
                 class="inline-flex items-center px-3 py-1.5 rounded-lg bg-black text-white dark:bg-white dark:text-black font-semibold text-xs hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors cursor-pointer"

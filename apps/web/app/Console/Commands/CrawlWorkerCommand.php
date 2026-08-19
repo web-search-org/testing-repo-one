@@ -7,6 +7,7 @@ use App\Models\Domain;
 use App\Models\Sitemap;
 use App\Models\WebLink;
 use App\Models\WebPage;
+use App\Models\Word;
 use App\Services\RobotsTxtService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
@@ -251,6 +252,9 @@ class CrawlWorkerCommand extends Command
                             ]
                         );
                         $indexedCount++;
+
+                        // Index content words into words dictionary
+                        $this->indexWords($title, $bodyText, $keywords);
 
                         // Extract all outbound links
                         $links = $this->extractLinks($html, $url);
@@ -541,5 +545,30 @@ class CrawlWorkerCommand extends Command
         $freq = array_count_values($filtered);
         arsort($freq);
         return array_slice(array_keys($freq), 0, 8);
+    }
+
+    protected function indexWords(string $title, string $body, array $keywords): void
+    {
+        try {
+            $text = strtolower($title . ' ' . substr($body, 0, 800) . ' ' . implode(' ', $keywords));
+            $words = str_word_count($text, 1);
+            $stopWords = ['the', 'and', 'a', 'to', 'of', 'in', 'is', 'for', 'that', 'on', 'with', 'by', 'at', 'from', 'this', 'it', 'an'];
+            
+            $uniqueWords = [];
+            foreach ($words as $w) {
+                if (strlen($w) >= 3 && strlen($w) <= 40 && !in_array($w, $stopWords) && preg_match('/^[a-z0-9\-_]+$/i', $w)) {
+                    $uniqueWords[$w] = true;
+                }
+            }
+
+            foreach (array_keys($uniqueWords) as $word) {
+                Word::firstOrCreate(
+                    ['word' => $word],
+                    ['language' => 'en', 'frequency' => 1]
+                );
+            }
+        } catch (\Exception) {
+            // Ignore word indexing errors silently
+        }
     }
 }

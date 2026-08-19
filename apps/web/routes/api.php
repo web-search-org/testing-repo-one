@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->group(function () {
     // Search API
     Route::get('/search', [SearchApiController::class, 'search'])->name('api.v1.search');
+    Route::get('/search/random', [SearchApiController::class, 'random'])->name('api.v1.search.random');
     Route::get('/suggest', [SearchApiController::class, 'suggest'])->name('api.v1.suggest');
     Route::post('/submit', [SearchApiController::class, 'submitSite'])->name('api.v1.submit');
 

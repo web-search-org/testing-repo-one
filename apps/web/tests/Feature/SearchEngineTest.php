@@ -337,4 +337,27 @@ class SearchEngineTest extends TestCase
         $this->assertEquals(3.0, $rules['agents']['*']['crawl_delay']);
         $this->assertEquals(['https://test-site.org/sitemap.xml'], $rules['sitemaps']);
     }
+
+    public function test_random_word_and_random_search_redirect(): void
+    {
+        \App\Models\Word::create([
+            'word' => 'antigravity',
+            'language' => 'en',
+            'frequency' => 10,
+        ]);
+
+        // API endpoint
+        $response = $this->getJson('/api/v1/search/random');
+        $response->assertStatus(200)
+            ->assertJsonStructure(['word', 'url']);
+
+        // Web endpoint
+        $randomWordResponse = $this->getJson('/random-word');
+        $randomWordResponse->assertStatus(200)
+            ->assertJsonStructure(['word']);
+
+        // Web redirect
+        $redirectResponse = $this->get('/search/random');
+        $redirectResponse->assertStatus(302);
+    }
 }

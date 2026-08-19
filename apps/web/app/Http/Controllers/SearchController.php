@@ -64,6 +64,30 @@ class SearchController extends Controller
     }
 
     /**
+     * Random search redirect: GET /search/random
+     */
+    public function random(Request $request)
+    {
+        $category = $request->input('category', 'all');
+        $word = $this->searchService->getRandomWord();
+
+        return redirect()->route('search', [
+            'q' => $word,
+            'category' => $category !== 'all' ? $category : null,
+        ]);
+    }
+
+    /**
+     * Get a random word JSON: GET /random-word
+     */
+    public function randomWord()
+    {
+        return response()->json([
+            'word' => $this->searchService->getRandomWord(),
+        ]);
+    }
+
+    /**
      * Submit New Website page: GET /submit
      */
     public function submitSite(): Response

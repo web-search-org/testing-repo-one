@@ -506,4 +506,18 @@ class SearchService
             ->pluck('query')
             ->toArray();
     }
+
+    /**
+     * Retrieve a random word from the words table.
+     */
+    public function getRandomWord(): string
+    {
+        $word = \App\Models\Word::inRandomOrder()->value('word');
+        if ($word) {
+            return $word;
+        }
+
+        $fallbackWords = ['opensource', 'technology', 'developer', 'software', 'search', 'privacy', 'laravel', 'framework', 'database', 'crawler', 'indexer', 'algorithm', 'svelte'];
+        return $fallbackWords[array_rand($fallbackWords)];
+    }
 }

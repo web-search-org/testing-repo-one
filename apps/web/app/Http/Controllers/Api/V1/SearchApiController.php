@@ -52,6 +52,19 @@ class SearchApiController extends Controller
     }
 
     /**
+     * Random search word: GET /api/v1/search/random
+     */
+    public function random(Request $request): JsonResponse
+    {
+        $word = $this->searchService->getRandomWord();
+
+        return response()->json([
+            'word' => $word,
+            'url' => url('/search?q=' . urlencode($word)),
+        ]);
+    }
+
+    /**
      * Public submit website endpoint: POST /api/v1/submit
      */
     public function submitSite(Request $request): JsonResponse

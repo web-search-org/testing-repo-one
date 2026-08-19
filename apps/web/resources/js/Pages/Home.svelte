@@ -3,7 +3,7 @@
     import Navbar from '../Components/Navbar.svelte';
     import Footer from '../Components/Footer.svelte';
     import SearchBar from '../Components/SearchBar.svelte';
-    import { Shield, Lock, Cpu, Globe, Search, Terminal, Plus, BarChart2, CheckCircle2 } from 'lucide-svelte';
+    import { Shield, Lock, Cpu, Globe, Search, Terminal, Plus, BarChart2, CheckCircle2, Shuffle } from 'lucide-svelte';
 
     let { totalDocuments = 0, totalDomains = 0, isReady = true } = $props();
 
@@ -40,13 +40,21 @@
         </div>
 
         <!-- Central Search Bar -->
-        <div class="w-full max-w-2xl mb-6">
+        <div class="w-full max-w-2xl mb-4">
             <SearchBar size="large" />
         </div>
 
-        <!-- Quick Suggestions -->
+        <!-- Quick Suggestions & Random Word Button -->
         <div class="flex flex-wrap items-center justify-center gap-1.5 mb-12 text-xs">
-            <span class="text-zinc-400 mr-1">Trending:</span>
+            <a
+                href="/search/random"
+                class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-black text-white dark:bg-white dark:text-black font-semibold hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors"
+                title="Search a random word from the dictionary"
+            >
+                <Shuffle class="w-3 h-3" />
+                <span>Random Word</span>
+            </a>
+            <span class="text-zinc-400 mx-1">or explore:</span>
             {#each quickQueries as query}
                 <a
                     href={`/search?q=${encodeURIComponent(query)}`}
