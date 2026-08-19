@@ -21,15 +21,14 @@ class CrawlWorkerCommand extends Command
     protected $signature = 'crawl:worker 
                             {--once : Process pending jobs once and exit}
                             {--poll=2 : Seconds to wait between polling for new queued jobs}
-                            {--auto-queue-external : Automatically queue new external domains discovered}
-                            {--limit=25 : Maximum pages to crawl per job}';
+                            {--limit=50 : Maximum pages to crawl per job}';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = 'Process and crawl queued websites, extract interlinks, build link graphs, and auto-discover URLs';
+    protected $description = 'Process queued websites, automatically extract interlinks, build link graphs, and queue all newly discovered URLs';
 
     /**
      * Execute the console command.
@@ -38,9 +37,8 @@ class CrawlWorkerCommand extends Command
     {
         $once = $this->option('once');
         $poll = (int) $this->option('poll');
-        $autoQueueExternal = (bool) $this->option('auto-queue-external');
 
-        $this->info("🚀 Web-Search Crawler Worker active (Automatic Interlink Discovery Enabled).");
+        $this->info("🚀 Web-Search Crawler Worker active (Automatic Queueing of Discovered Links: ON).");
 
         do {
             $job = CrawlJob::where('status', 'queued')
@@ -48,7 +46,7 @@ class CrawlWorkerCommand extends Command
                 ->first();
 
             if ($job) {
-                $this->processJob($job, $autoQueueExternal);
+                $this->processJob($job);
             } else {
                 if ($once) {
                     $this->info("No queued jobs remaining. Exiting.");
@@ -61,7 +59,7 @@ class CrawlWorkerCommand extends Command
         return Command::SUCCESS;
     }
 
-    protected function processJob(CrawlJob $job, bool $autoQueueExternal = false): void
+    protected function processJob(CrawlJob $job): void
     {
         $this->info("⚡ Processing Job {$job->id}: {$job->seed_url}");
         $job->update([
@@ -90,6 +88,7 @@ class CrawlWorkerCommand extends Command
 
         $crawledCount = 0;
         $indexedCount = 0;
+        $discoveredLinksCount = 0;
         $frontier = [$seedUrl];
         $visited = [];
         $discoveredExternalDomains = [];
@@ -127,11 +126,11 @@ class CrawlWorkerCommand extends Command
 
                     if ($response->successful()) {
                         $html = $response->body();
-                        $title = $this->extractTitle($html) ?: $url;
-                        $description = $this->extractMetaDescription($html);
-                        $bodyText = $this->extractBodyText($html);
-                        $keywords = $this->extractKeywords($title, $bodyText);
-                        $headings = $this->extractHeadings($html);
+                        $title = $this->sanitizeUtf8($this->extractTitle($html) ?: $url);
+                        $description = $this->sanitizeUtf8($this->extractMetaDescription($html));
+                        $bodyText = $this->sanitizeUtf8($this->extractBodyText($html));
+                        $keywords = array_map([$this, 'sanitizeUtf8'], $this->extractKeywords($title, $bodyText));
+                        $headings = array_map([$this, 'sanitizeUtf8'], $this->extractHeadings($html));
                         $ogImage = $this->extractOgImage($html);
                         $favicon = $this->extractFavicon($html, $url);
 
@@ -161,7 +160,7 @@ class CrawlWorkerCommand extends Command
                         );
                         $indexedCount++;
 
-                        // Extract and record all outbound links and interlinks
+                        // Extract all outbound links
                         $links = $this->extractLinks($html, $url);
                         $outLinksCount = 0;
 
@@ -174,6 +173,7 @@ class CrawlWorkerCommand extends Command
                             if (empty($targetDomain)) continue;
 
                             $outLinksCount++;
+                            $discoveredLinksCount++;
 
                             // Save link graph connection
                             WebLink::updateOrCreate(
@@ -185,44 +185,68 @@ class CrawlWorkerCommand extends Command
                                     'source_page_id' => $page->id,
                                     'source_domain' => $pageDomain,
                                     'target_domain' => $targetDomain,
-                                    'anchor_text' => $linkData['anchor'],
+                                    'anchor_text' => $this->sanitizeUtf8($linkData['anchor']),
                                     'is_external' => $isExternal,
                                     'rel' => $linkData['rel'],
                                 ]
                             );
 
-                            // Queue internal link into frontier
-                            if (!$isExternal && !in_array($targetUrl, $visited) && count($frontier) < ($maxPages * 2)) {
-                                $frontier[] = $targetUrl;
-                            }
+                            // Automatic Discovery & Queueing
+                            if (!$isExternal) {
+                                // Internal Link on the same domain
+                                if (!in_array($targetUrl, $visited) && count($frontier) < ($maxPages * 2)) {
+                                    $frontier[] = $targetUrl;
+                                }
 
-                            // Auto-register external domain for future crawls
-                            if ($isExternal && !in_array($targetDomain, $discoveredExternalDomains)) {
-                                $discoveredExternalDomains[] = $targetDomain;
-                                Domain::firstOrCreate(
-                                    ['name' => $targetDomain],
-                                    [
-                                        'protocol' => $targetParsed['scheme'] ?? 'https',
-                                        'verification_token' => 'web-search-site-verification=' . Str::random(32),
-                                        'is_verified' => false,
-                                        'crawl_status' => 'idle',
-                                    ]
-                                );
-
-                                if ($autoQueueExternal) {
-                                    CrawlJob::firstOrCreate(
-                                        ['seed_url' => "https://{$targetDomain}"],
+                                // If not indexed yet and not already queued, auto-queue into database
+                                if (WebPage::where('url', $targetUrl)->doesntExist() &&
+                                    CrawlJob::where('seed_url', $targetUrl)->whereIn('status', ['queued', 'running'])->doesntExist()) {
+                                    CrawlJob::create([
+                                        'id' => (string) Str::uuid(),
+                                        'seed_url' => $targetUrl,
+                                        'status' => 'queued',
+                                        'max_depth' => 1,
+                                        'max_pages' => 10,
+                                        'concurrency' => 2,
+                                        'metadata' => [
+                                            'source' => 'auto_internal_link_discovery',
+                                            'referred_by' => $url,
+                                        ],
+                                    ]);
+                                    $this->line("    ↳ Queued internal page: {$targetUrl}");
+                                }
+                            } else {
+                                // External Link to another domain
+                                if (!in_array($targetDomain, $discoveredExternalDomains)) {
+                                    $discoveredExternalDomains[] = $targetDomain;
+                                    
+                                    Domain::firstOrCreate(
+                                        ['name' => $targetDomain],
                                         [
+                                            'protocol' => $targetParsed['scheme'] ?? 'https',
+                                            'verification_token' => 'web-search-site-verification=' . Str::random(32),
+                                            'is_verified' => false,
+                                            'crawl_status' => 'idle',
+                                        ]
+                                    );
+
+                                    $targetSeedUrl = ($targetParsed['scheme'] ?? 'https') . "://{$targetDomain}/";
+                                    if (CrawlJob::where('seed_url', $targetSeedUrl)->whereIn('status', ['queued', 'running'])->doesntExist() &&
+                                        WebPage::where('domain', $targetDomain)->doesntExist()) {
+                                        CrawlJob::create([
+                                            'id' => (string) Str::uuid(),
+                                            'seed_url' => $targetSeedUrl,
                                             'status' => 'queued',
                                             'max_depth' => 2,
                                             'max_pages' => 25,
                                             'concurrency' => 2,
                                             'metadata' => [
-                                                'source' => 'link_graph_discovery',
+                                                'source' => 'auto_external_link_discovery',
                                                 'referred_by' => $url,
                                             ],
-                                        ]
-                                    );
+                                        ]);
+                                        $this->line("    ↳ Queued discovered domain: {$targetSeedUrl}");
+                                    }
                                 }
                             }
                         }
@@ -237,7 +261,7 @@ class CrawlWorkerCommand extends Command
                             'page_rank' => $computedPageRank,
                         ]);
 
-                        $this->line("  ✓ Indexed: {$url} ({$durationMs}ms, {$outLinksCount} links found, PR: {$computedPageRank})");
+                        $this->line("  ✓ Indexed: {$url} ({$durationMs}ms, {$outLinksCount} links extracted, PR: {$computedPageRank})");
                     }
                 } catch (\Exception $e) {
                     $this->warn("  ✗ Failed to fetch {$url}: {$e->getMessage()}");
@@ -258,7 +282,7 @@ class CrawlWorkerCommand extends Command
             $job->update([
                 'status' => 'completed',
                 'pages_crawled' => $crawledCount,
-                'pages_discovered' => count($visited) + count($frontier),
+                'pages_discovered' => count($visited) + count($frontier) + $discoveredLinksCount,
                 'pages_indexed' => $indexedCount,
                 'finished_at' => now(),
             ]);
@@ -273,6 +297,14 @@ class CrawlWorkerCommand extends Command
             ]);
             $this->error("❌ Job {$job->id} failed: {$e->getMessage()}");
         }
+    }
+
+    protected function sanitizeUtf8(?string $string): ?string
+    {
+        if ($string === null) {
+            return null;
+        }
+        return mb_convert_encoding($string, 'UTF-8', 'UTF-8');
     }
 
     protected function extractLinks(string $html, string $baseUrl): array

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\CrawlJob;
 use App\Models\Domain;
+use App\Models\WebLink;
 use App\Models\WebPage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -82,15 +83,18 @@ class CrawlApiController extends Controller
             'favicon_url' => 'nullable|string',
             'og_image' => 'nullable|string',
             'canonical_url' => 'nullable|string',
+            'outbound_links' => 'nullable|array',
             'outbound_links_count' => 'nullable|integer',
             'content_hash' => 'nullable|string|max:64',
             'status_code' => 'nullable|integer',
             'response_time_ms' => 'nullable|numeric',
         ]);
 
+        $pageDomain = strtolower($data['domain']);
+
         // Find or create domain
         $domain = Domain::firstOrCreate(
-            ['name' => strtolower($data['domain'])],
+            ['name' => $pageDomain],
             [
                 'protocol' => parse_url($data['url'], PHP_URL_SCHEME) ?: 'https',
                 'favicon_url' => $data['favicon_url'] ?? null,
@@ -115,7 +119,7 @@ class CrawlApiController extends Controller
             ['url' => $data['url']],
             [
                 'domain_id' => $domain->id,
-                'domain' => strtolower($data['domain']),
+                'domain' => $pageDomain,
                 'title' => $data['title'] ?: $data['domain'],
                 'description' => $data['description'] ?? null,
                 'keywords' => $data['keywords'] ?? [],
@@ -129,11 +133,92 @@ class CrawlApiController extends Controller
                 'og_image' => $data['og_image'] ?? null,
                 'http_status' => $data['status_code'] ?? 200,
                 'response_time_ms' => $data['response_time_ms'] ?? 0,
-                'out_links_count' => $data['outbound_links_count'] ?? 0,
+                'out_links_count' => $data['outbound_links_count'] ?? (isset($data['outbound_links']) ? count($data['outbound_links']) : 0),
                 'is_indexed' => true,
                 'crawled_at' => now(),
             ]
         );
+
+        // Process Outbound Links & Auto-Queue Discovered URLs
+        if (!empty($data['outbound_links'])) {
+            foreach ($data['outbound_links'] as $link) {
+                $targetUrl = is_array($link) ? ($link['url'] ?? '') : (string) $link;
+                if (empty($targetUrl)) continue;
+
+                $targetParsed = parse_url($targetUrl);
+                $targetDomain = strtolower($targetParsed['host'] ?? '');
+                if (empty($targetDomain)) continue;
+
+                $isExternal = ($targetDomain !== $pageDomain);
+                $anchor = is_array($link) ? ($link['anchor'] ?? '') : parse_url($targetUrl, PHP_URL_PATH);
+
+                WebLink::updateOrCreate(
+                    [
+                        'source_url' => $data['url'],
+                        'target_url' => $targetUrl,
+                    ],
+                    [
+                        'source_page_id' => $page->id,
+                        'source_domain' => $pageDomain,
+                        'target_domain' => $targetDomain,
+                        'anchor_text' => substr($anchor ?: 'Link', 0, 100),
+                        'is_external' => $isExternal,
+                    ]
+                );
+
+                if (!$isExternal) {
+                    if (WebPage::where('url', $targetUrl)->doesntExist() &&
+                        CrawlJob::where('seed_url', $targetUrl)->whereIn('status', ['queued', 'running'])->doesntExist()) {
+                        CrawlJob::create([
+                            'id' => (string) Str::uuid(),
+                            'seed_url' => $targetUrl,
+                            'status' => 'queued',
+                            'max_depth' => 1,
+                            'max_pages' => 10,
+                            'concurrency' => 2,
+                            'metadata' => [
+                                'source' => 'api_internal_link_discovery',
+                                'referred_by' => $data['url'],
+                            ],
+                        ]);
+                    }
+                } else {
+                    Domain::firstOrCreate(
+                        ['name' => $targetDomain],
+                        [
+                            'protocol' => $targetParsed['scheme'] ?? 'https',
+                            'verification_token' => 'web-search-site-verification=' . Str::random(32),
+                            'is_verified' => false,
+                            'crawl_status' => 'idle',
+                        ]
+                    );
+
+                    $targetSeedUrl = "{$targetParsed['scheme']}://{$targetDomain}/";
+                    if (CrawlJob::where('seed_url', $targetSeedUrl)->whereIn('status', ['queued', 'running'])->doesntExist() &&
+                        WebPage::where('domain', $targetDomain)->doesntExist()) {
+                        CrawlJob::create([
+                            'id' => (string) Str::uuid(),
+                            'seed_url' => $targetSeedUrl,
+                            'status' => 'queued',
+                            'max_depth' => 2,
+                            'max_pages' => 25,
+                            'concurrency' => 2,
+                            'metadata' => [
+                                'source' => 'api_external_link_discovery',
+                                'referred_by' => $data['url'],
+                            ],
+                        ]);
+                    }
+                }
+            }
+        }
+
+        // Update PageRank
+        $inLinksCount = WebLink::where('target_url', $page->url)->count();
+        $page->update([
+            'in_links_count' => $inLinksCount,
+            'page_rank' => round(min(10.0, 1.0 + ($inLinksCount * 0.5)), 1),
+        ]);
 
         return response()->json([
             'success' => true,
