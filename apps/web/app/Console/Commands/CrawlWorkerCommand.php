@@ -21,14 +21,15 @@ class CrawlWorkerCommand extends Command
     protected $signature = 'crawl:worker 
                             {--once : Process pending jobs once and exit}
                             {--poll=2 : Seconds to wait between polling for new queued jobs}
-                            {--limit=50 : Maximum pages to crawl per job}';
+                            {--limit=50 : Maximum pages to crawl per job}
+                            {--recover : Force recover all running jobs back to queued}';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = 'Process queued websites, automatically extract interlinks, build link graphs, and queue all newly discovered URLs';
+    protected $description = 'Process queued websites, automatically extract interlinks, build link graphs, and continuously crawl the decentralized web';
 
     /**
      * Execute the console command.
@@ -37,13 +38,51 @@ class CrawlWorkerCommand extends Command
     {
         $once = $this->option('once');
         $poll = (int) $this->option('poll');
+        $forceRecover = $this->option('recover');
 
-        $this->info("🚀 Web-Search Crawler Worker active (Automatic Queueing of Discovered Links: ON).");
+        $this->info("🚀 Web-Search Autonomous Crawler Worker active.");
+
+        // Recovery of stale or interrupted running jobs
+        if ($forceRecover) {
+            $recovered = CrawlJob::where('status', 'running')->update(['status' => 'queued']);
+            $this->info("♻️ Force recovered {$recovered} running job(s) back to queue.");
+        } else {
+            $staleCutoff = now()->subMinutes(2);
+            $recovered = CrawlJob::where('status', 'running')
+                ->where('updated_at', '<', $staleCutoff)
+                ->update(['status' => 'queued']);
+            if ($recovered > 0) {
+                $this->warn("♻️ Auto-recovered {$recovered} stale running job(s) back to queue.");
+            }
+        }
 
         do {
             $job = CrawlJob::where('status', 'queued')
                 ->orderBy('created_at')
                 ->first();
+
+            // If queue is empty, auto-seed from uncrawled domains in database
+            if (!$job) {
+                $unCrawledDomain = Domain::where('total_pages', 0)
+                    ->whereNull('last_crawled_at')
+                    ->whereDoesntHave('crawlJobs', function ($q) {
+                        $q->whereIn('status', ['queued', 'running']);
+                    })
+                    ->first();
+
+                if ($unCrawledDomain) {
+                    $job = CrawlJob::create([
+                        'id' => (string) Str::uuid(),
+                        'seed_url' => "{$unCrawledDomain->protocol}://{$unCrawledDomain->name}/",
+                        'status' => 'queued',
+                        'max_depth' => 2,
+                        'max_pages' => 25,
+                        'concurrency' => 2,
+                        'metadata' => ['source' => 'autonomous_domain_frontier'],
+                    ]);
+                    $this->line("🌱 Auto-seeded frontier job for uncrawled domain: {$job->seed_url}");
+                }
+            }
 
             if ($job) {
                 $this->processJob($job);
@@ -65,6 +104,7 @@ class CrawlWorkerCommand extends Command
         $job->update([
             'status' => 'running',
             'started_at' => now(),
+            'updated_at' => now(),
         ]);
 
         $seedUrl = $job->seed_url;
@@ -95,11 +135,15 @@ class CrawlWorkerCommand extends Command
 
         try {
             if ($isSitemap) {
-                $res = Http::timeout(10)->get($seedUrl);
-                if ($res->successful()) {
-                    $xmlContent = $res->body();
-                    preg_match_all('/<loc>(https?:\/\/[^<]+)<\/loc>/i', $xmlContent, $matches);
-                    $frontier = array_unique(array_slice($matches[1] ?? [$seedUrl], 0, $maxPages));
+                try {
+                    $res = Http::timeout(6)->connectTimeout(3)->get($seedUrl);
+                    if ($res->successful()) {
+                        $xmlContent = $res->body();
+                        preg_match_all('/<loc>(https?:\/\/[^<]+)<\/loc>/i', $xmlContent, $matches);
+                        $frontier = array_unique(array_slice($matches[1] ?? [$seedUrl], 0, $maxPages));
+                    }
+                } catch (\Exception $e) {
+                    $this->warn("  ✗ Sitemap fetch timed out: {$seedUrl}");
                 }
             }
 
@@ -112,9 +156,13 @@ class CrawlWorkerCommand extends Command
                 }
                 $visited[] = $url;
 
+                // Keep job alive in heartbeat
+                $job->touch();
+
                 $start = microtime(true);
                 try {
-                    $response = Http::timeout(8)
+                    $response = Http::timeout(5)
+                        ->connectTimeout(3)
                         ->withHeaders([
                             'User-Agent' => 'WebSearchBot/1.0 (+https://web-search.org/bot.html)',
                             'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -213,7 +261,6 @@ class CrawlWorkerCommand extends Command
                                             'referred_by' => $url,
                                         ],
                                     ]);
-                                    $this->line("    ↳ Queued internal page: {$targetUrl}");
                                 }
                             } else {
                                 // External Link to another domain
@@ -245,7 +292,6 @@ class CrawlWorkerCommand extends Command
                                                 'referred_by' => $url,
                                             ],
                                         ]);
-                                        $this->line("    ↳ Queued discovered domain: {$targetSeedUrl}");
                                     }
                                 }
                             }
@@ -264,7 +310,7 @@ class CrawlWorkerCommand extends Command
                         $this->line("  ✓ Indexed: {$url} ({$durationMs}ms, {$outLinksCount} links extracted, PR: {$computedPageRank})");
                     }
                 } catch (\Exception $e) {
-                    $this->warn("  ✗ Failed to fetch {$url}: {$e->getMessage()}");
+                    $this->warn("  ✗ Skipped {$url} (timeout/network error: {$e->getMessage()})");
                 }
             }
 
