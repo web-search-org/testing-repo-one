@@ -34,11 +34,13 @@ class CrawlWorkerCommand extends Command
     protected $description = 'Process queued websites, respect robots.txt rules, auto-extract interlinks, build link graphs, and continuously crawl the web';
 
     protected RobotsTxtService $robots;
+    protected \App\Services\FaviconService $favicons;
 
-    public function __construct(RobotsTxtService $robots)
+    public function __construct(RobotsTxtService $robots, \App\Services\FaviconService $favicons)
     {
         parent::__construct();
         $this->robots = $robots;
+        $this->favicons = $favicons;
     }
 
     /**
@@ -230,6 +232,13 @@ class CrawlWorkerCommand extends Command
                         $pageDomain = parse_url($url, PHP_URL_HOST) ?: $seedDomain;
                         $pageDomain = strtolower($pageDomain);
 
+                        // Download and cache favicon in local database
+                        try {
+                            $this->favicons->getOrFetchFavicon($pageDomain, $favicon);
+                        } catch (\Exception) {}
+
+                        $localFaviconUrl = "/favicon/{$pageDomain}";
+
                         $page = WebPage::updateOrCreate(
                             ['url' => $url],
                             [
@@ -241,7 +250,7 @@ class CrawlWorkerCommand extends Command
                                 'keywords' => $keywords,
                                 'headings' => $headings,
                                 'og_image' => $ogImage,
-                                'favicon_url' => $favicon,
+                                'favicon_url' => $localFaviconUrl,
                                 'category' => $job->metadata['category'] ?? 'all',
                                 'http_status' => $response->status(),
                                 'response_time_ms' => $durationMs,

@@ -126,7 +126,7 @@ class SearchService
                 'title' => $doc->title ?: $doc->domain,
                 'snippet' => $snippet,
                 'highlightedSnippet' => $highlighted,
-                'favicon' => $doc->favicon_url ?: "https://www.google.com/s2/favicons?domain={$doc->domain}&sz=64",
+                'favicon' => "/favicon/{$doc->domain}",
                 'rankScore' => round($score, 2),
                 'category' => $doc->category,
                 'publishedAt' => $doc->created_at?->toIso8601String(),

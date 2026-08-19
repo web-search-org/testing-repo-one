@@ -360,4 +360,19 @@ class SearchEngineTest extends TestCase
         $redirectResponse = $this->get('/search/random');
         $redirectResponse->assertStatus(302);
     }
+
+    public function test_favicon_storage_and_serving_from_database(): void
+    {
+        $domain = 'example-favicon.org';
+        $faviconService = app(\App\Services\FaviconService::class);
+        $favicon = $faviconService->getOrFetchFavicon($domain);
+
+        $this->assertTrue(Str::isUuid($favicon->id));
+        $this->assertEquals($domain, $favicon->domain);
+        $this->assertNotEmpty($favicon->data_base64);
+
+        $response = $this->get("/favicon/{$domain}");
+        $response->assertStatus(200)
+            ->assertHeader('X-Favicon-Source', 'database');
+    }
 }
