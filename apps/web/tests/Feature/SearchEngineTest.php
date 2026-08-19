@@ -324,4 +324,17 @@ class SearchEngineTest extends TestCase
                 'systemHealth',
             ]);
     }
+
+    public function test_robots_txt_parser_and_enforcement(): void
+    {
+        $robots = app(\App\Services\RobotsTxtService::class);
+        $sample = "User-agent: *\nDisallow: /admin/\nDisallow: /private\nAllow: /public\nCrawl-delay: 3\nSitemap: https://test-site.org/sitemap.xml\n";
+
+        $rules = $robots->parseRobotsTxt($sample);
+
+        $this->assertCount(2, $rules['agents']['*']['disallow']);
+        $this->assertCount(1, $rules['agents']['*']['allow']);
+        $this->assertEquals(3.0, $rules['agents']['*']['crawl_delay']);
+        $this->assertEquals(['https://test-site.org/sitemap.xml'], $rules['sitemaps']);
+    }
 }

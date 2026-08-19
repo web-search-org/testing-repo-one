@@ -7,6 +7,7 @@ use App\Models\Domain;
 use App\Models\Sitemap;
 use App\Models\WebLink;
 use App\Models\WebPage;
+use App\Services\RobotsTxtService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -29,7 +30,15 @@ class CrawlWorkerCommand extends Command
      *
      * @var string
      */
-    protected $description = 'Process queued websites, automatically extract interlinks, build link graphs, and continuously crawl the decentralized web';
+    protected $description = 'Process queued websites, respect robots.txt rules, auto-extract interlinks, build link graphs, and continuously crawl the web';
+
+    protected RobotsTxtService $robots;
+
+    public function __construct(RobotsTxtService $robots)
+    {
+        parent::__construct();
+        $this->robots = $robots;
+    }
 
     /**
      * Execute the console command.
@@ -40,7 +49,7 @@ class CrawlWorkerCommand extends Command
         $poll = (int) $this->option('poll');
         $forceRecover = $this->option('recover');
 
-        $this->info("🚀 Web-Search Autonomous Crawler Worker active.");
+        $this->info("🚀 Web-Search Autonomous Crawler Worker active (robots.txt validation: ON).");
 
         // Recovery of stale or interrupted running jobs
         if ($forceRecover) {
@@ -123,6 +132,24 @@ class CrawlWorkerCommand extends Command
         );
         $domain->update(['crawl_status' => 'crawling']);
 
+        // Check & parse robots.txt for domain
+        $robotsRules = $this->robots->getRulesForDomain($scheme, $seedDomain);
+        
+        // Auto-register any XML Sitemaps declared in robots.txt
+        $discoveredSitemaps = $robotsRules['sitemaps'] ?? [];
+        foreach ($discoveredSitemaps as $sitemapUrl) {
+            Sitemap::firstOrCreate(
+                [
+                    'domain_id' => $domain->id,
+                    'url' => $sitemapUrl,
+                ],
+                [
+                    'status' => 'submitted',
+                    'submitted_at' => now(),
+                ]
+            );
+        }
+
         $isSitemap = (bool) ($job->metadata['is_sitemap'] ?? str_ends_with(strtolower($seedUrl), '.xml'));
         $maxPages = min((int) ($job->max_pages ?: 50), 200);
 
@@ -155,6 +182,23 @@ class CrawlWorkerCommand extends Command
                     continue;
                 }
                 $visited[] = $url;
+
+                // 1. Robots.txt Compliance Check
+                if (!$this->robots->canFetch($url, 'WebSearchBot')) {
+                    $this->warn("  🚫 Disallowed by robots.txt: {$url}");
+                    WebPage::updateOrCreate(
+                        ['url' => $url],
+                        [
+                            'domain_id' => $domain->id,
+                            'domain' => parse_url($url, PHP_URL_HOST) ?: $seedDomain,
+                            'title' => 'Blocked by robots.txt',
+                            'is_indexed' => false,
+                            'index_status' => 'blocked_by_robots_txt',
+                            'crawled_at' => now(),
+                        ]
+                    );
+                    continue;
+                }
 
                 // Keep job alive in heartbeat
                 $job->touch();
